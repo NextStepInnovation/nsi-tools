@@ -20,7 +20,7 @@ import urllib
 from ipaddress import ip_network, ip_interface, ip_address
 from pathlib import Path
 import string
-from datetime import datetime
+from datetime import datetime as _datetime
 import socket
 from typing import *
 import hashlib
@@ -33,6 +33,7 @@ import dateutil.parser
 import ifcfg
 import requests
 import jmespath
+import bs4
 
 try:
     from cytoolz.curried import *
@@ -363,6 +364,25 @@ def vdo(func, value):
 
     '''
     return do(vcall(func), value)
+
+@curry
+def do_log(logger, msg, value, **kw):
+    logger(msg, **kw)
+    return value
+do_info = compose_left(
+    lambda logger: do_log(logger.info)
+)
+do_error = compose_left(
+    lambda logger: do_log(logger.error)
+)
+
+@curry
+def map_t(func, values):
+    return pipe(
+        values,
+        map(func),
+        tuple,
+    )
 
 @curry
 def mapdo(do_func, iterable):
@@ -703,15 +723,6 @@ def slurp_lines(path: Union[str, Path]):
         call('splitlines')
     )
 
-def cslurp(path: Union[str, Path]):
-    '''Curried slurp
-    '''
-    return lambda: slurp(path)
-
-def cslurp_lines(path: Union[str, Path]):
-    '''Curried slurp_lines
-    '''
-    return lambda: slurp_lines(path)
 
 # ----------------------------------------------------------------------
 #
@@ -823,6 +834,23 @@ def as_tuple(func):
     def wrapper(*a, **kw):
         return tuple(func(*a, **kw))
     return wrapper
+
+@curry
+def split(sep:str, value: str, **kw):
+    return value.split(sep, **kw) if sep is not None else value.split(**kw)
+
+def lower(value: str):
+    return value.lower()
+    
+def upper(value: str):
+    return value.upper()
+
+@curry
+def replace(a: str, b: str, value: str, **kw):
+    return value.replace(a, b, **kw)
+
+def items(d: dict):
+    return d.items()
     
 # ----------------------------------------------------------------------
 #
@@ -1118,8 +1146,11 @@ def maybe_dt(ts, *, default=Nothing()):
     Null
 
     '''
-    if isinstance(ts, datetime):
+    if isinstance(ts, _datetime):
         return ts
+
+    if ts is None:
+        return default
 
     try:
         return dateutil.parser.parse(ts)
@@ -1136,12 +1167,12 @@ def ctime_as_dt(path: Union[str, Path]):
     return pipe(
         path,
         ctime,
-        datetime.fromtimestamp,
+        _datetime.fromtimestamp,
     )
 dt_ctime = ctime_as_dt
 
 @curry
-def to_dt(value, default=datetime.fromtimestamp(0)):
+def to_dt(value, default=_datetime.fromtimestamp(0)):
     '''Attempt to parse the given value as a datetime object, otherwise
     return default=epoch
 
@@ -1652,7 +1683,8 @@ def remove_comments(lines):
 def help_text(s):
     return textwrap.shorten(s, 1e300)
 
-def wrap_text(text, width):
+@curry
+def wrap_text(width, text):
     return pipe(
         textwrap.wrap(text, width),
         '\n'.join,
@@ -2335,3 +2367,38 @@ def jmes(search, d, *, default=Nothing()):
     return jmespath.search(search, d)
 
 
+# ----------------------------------------------------------------------
+#
+# HTML handling functions
+#
+# ----------------------------------------------------------------------
+
+def soup(content: str):
+    return bs4.BeautifulSoup(content, 'lxml')
+
+
+# ----------------------------------------------------------------------
+#
+# NTLM/SAM database functions
+#
+# ----------------------------------------------------------------------
+
+SAM_RE = re.compile(
+    r'^(.*?):\d+:(\w+:\w+):::$', re.M,
+)
+def get_sam_hashes(content):
+    return pipe(
+        content,
+        to_str,
+        SAM_RE.findall,
+    )
+
+MSCACHE_RE = re.compile(
+    r'^(.+?)/(.+?):(\$.*?\$.*?#.*?#.*?)$', re.M,
+)
+def get_mscache_hashes(content):
+    return pipe(
+        content,
+        to_str,
+        MSCACHE_RE.findall,
+    )

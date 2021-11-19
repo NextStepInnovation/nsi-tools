@@ -10,7 +10,7 @@ from PIL import (
     ImageFont,
 )
 
-from .. import toolz as _
+from ..toolz import *
 from .. import logging
 
 log = logging.new_log(__name__)
@@ -19,11 +19,11 @@ BLUE = (87, 116, 160, 255)
 BLUE2 = (100, 140, 200, 255)
 GREY = (100, 100, 100, 255)
 
-@_.curry
+@curry
 def to_bytes(im_func: T.Callable, obj: T.Union[str, Path, Image.Image]):
     match obj:
         case path if isinstance(path, (str, Path)):
-            return _.pipe(
+            return pipe(
                 path,
                 Image.open,
                 to_bytes(im_func),
@@ -34,7 +34,7 @@ def to_bytes(im_func: T.Callable, obj: T.Union[str, Path, Image.Image]):
             return buf.getvalue()
         case nonsense:
             raise IOError(
-                f'Cannot convert {nonsense} to bytes.'
+                f'Cannot convert {str(nonsense)[:1000]} to bytes.'
             )
 
 jpeg_bytes = to_bytes(
@@ -60,13 +60,13 @@ def tt_font(path):
     return font
 
 def cambria():
-    fmap = _.pipe(
+    fmap = pipe(
         [(frozenset(['italic', 'bold']), 'Cambria Bold Italic.ttf'),
          (frozenset(['bold']), 'Cambria Bold.ttf'),
          (frozenset(['italic']), 'Cambria Italic.ttf'),
          (frozenset(['math']), 'Cambria Math.ttf'),
          (frozenset(), 'Cambria.ttf')],
-        _.map(lambda d: (d[0], tt_font(get_font(d[1])))),
+        map(lambda d: (d[0], tt_font(get_font(d[1])))),
         dict,
     )
 
@@ -74,7 +74,7 @@ def cambria():
         return fmap[frozenset(mods)]
     return font
 
-@_.curry
+@curry
 def draw_text(base_image: Image.Image, text: str, loc: T.Tuple[int, int], *,
               font_f: T.Callable = cambria, font_size: int = 20,
               mods: T.Iterable = None, size: T.Tuple[int, int] = None,

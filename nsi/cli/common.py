@@ -1,46 +1,150 @@
 import sys
 from pathlib import Path
 import logging
-from typing import Union
+import typing as T
 
 import click
+import pyperclip
 
-from ..toolz import curry, clipboard_paste
+from .. import logging
+from .. import toolz as _
+from .. import ssh
 
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
+log = logging.new_log(__name__)
 
-@curry
-def exit_with_msg(logger, msg):
+@_.curry
+def _exit_with_msg(logger, msg):
     ctx = click.get_current_context()
     click.echo(ctx.get_help())
     logger.error(msg)
     raise click.Abort()
 
-_exit_with_msg = exit_with_msg(log)
+exit_with_msg = _exit_with_msg(log)
 
 def get_input_content(inpath, clipboard=False):
     if inpath:
         content = Path(inpath).read_text()
     elif clipboard:
-        content = clipboard_paste()
+        content = _.clipboard_paste()
     else:
         content = sys.stdin.read()
     return content
 
-def path_cb_or_stdin(inpath: Union[str, Path], clipboard: bool):
+def path_cb_or_stdin(inpath: T.Union[str, Path], clipboard: bool):
     if inpath:
         log.info(f'Getting input from path: {inpath}')
         return Path(inpath).read_text()
     elif clipboard:
         log.info('Getting input from clipboard...')
-        return clipboard_paste()
+        return _.clipboard_paste()
     log.info('Getting input from stdin...')
     return sys.stdin.read()
 
 def cb_or_stdin(clipboard):
     if clipboard:
         log.info('Getting input from clipboard...')
-        return clipboard_paste()
+        return _.clipboard_paste()
     log.info('Getting input from stdin...')
     return sys.stdin.read()
+
+
+def ssh_getoutput(host: str, **ssh_kw):
+    if '@' in host:
+        ssh_kw['username'], host = host.split('@', 1)
+
+    if ':' in host:
+        host, port = host.split(':', 1)
+        ssh_kw['port'] = int(port)
+
+    log.info(f'[ssh_getoutput] SSH args: host={host} kwargs={ssh_kw}')
+    return ssh.getoutput(host, **ssh_kw)
+
+ssh_options = _.compose(
+    click.option(
+        '--ssh',
+        help=(
+            'Run commands via SSH on this user@host:port (pubkey auth only)'
+        )
+    ),
+)
+
+input_options = _.compose(
+    click.option(
+        '-i', '--ippath', type=click.Path(
+            exists=True, dir_okay=False, resolve_path=True,
+        ),
+        help=('Path with list of IP addresses to scan, one IP per line'),
+    ),
+    click.option(
+        '-t', '--target',
+        help=('Target of enumeration (IP, IP network)'),
+    ),
+)
+
+def get_content(inpath, clipboard=False):
+    if inpath:
+        content = Path(inpath).read_text()
+    elif clipboard:
+        content = pyperclip.paste()
+    else:
+        content = sys.stdin.read()
+    return content
+
+inpath = _.compose(
+    click.option(
+        '-i', '--inpath', type=click.Path(
+            exists=True, dir_okay=False, resolve_path=True,
+        ),
+        help=('Path with list of items to scan, one item per line'),
+    )
+)
+
+outdir = _.compose(
+    click.option(
+        '-o', '--outdir', type=click.Path(
+            file_okay=False, dir_okay=True, resolve_path=True,
+        ),
+        help=('Output directory path'),
+    )
+)
+
+from_clipboard = _.compose(
+    click.option(
+        '-c', '--from-clipboard', is_flag=True,
+        help=('Get IPs from clipboard'),
+    ),
+)
+
+to_clipboard = _.compose(
+    click.option(
+        '-C', '--to-clipboard', is_flag=True,
+        help=('Send output to clipboard'),
+    ),
+)
+
+input_with_clipboard = _.compose(inpath, from_clipboard, to_clipboard)
+
+loglevel = _.compose(
+    click.option(
+        '--loglevel', default='info', 
+        type=click.Choice(
+            ['debug', 'info', 'warning', 'error', 'critical']
+        ),
+        help='Logging level'
+    )
+)
+
+cred_options = _.compose(
+    click.option(
+        '-u', '--username', default='',
+        help=('User name with which to authenticate (default: NULL)'),
+    ),
+    click.option(
+        '-p', '--password', default='',
+        help=('Password with which to authenticate (default: NULL)'),
+    ),
+    click.option(
+        '-d', '--domain',
+        help=('Domain to use when authenticating (default: ".")'),
+    ),
+)

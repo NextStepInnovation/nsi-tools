@@ -1,8 +1,10 @@
 import re
 from pathlib import Path
 import calendar
+import typing as T
 
 import jinja2
+from pkg_resources import resource_filename as _resource_filename
 
 from .. import toolz as _
 from .. import logging
@@ -10,6 +12,8 @@ from .. import images
 from .. import markdown
 
 log = logging.new_log(__name__)
+
+resource_filename = _.curry(_resource_filename)(__name__)
 
 @_.curry
 def find_files(start, filename):
@@ -118,9 +122,6 @@ def figure_function(im_type, bytes_function, caption, filename, start='.',
 png = figure_function('png', images.common.png_bytes)
 jpeg = figure_function('jpeg', images.common.jpeg_bytes)
 
-def table(data):
-    return get_env().get_template('table.html.j2').render(data=data)
-
 def add_functions(env: jinja2.Environment):
     env.globals['png'] = png
     env.globals['jpeg'] = jpeg
@@ -132,3 +133,43 @@ get_env = _.compose_left(
     add_filters,
     add_functions,
 )
+
+def table(data):
+    return get_env().get_template('table.html.j2').render(data=data)
+
+def add_meta_filters(env: jinja2.Environment):
+    return _.pipe(
+        env,
+        add_filters,
+    )
+
+def add_meta_functions(env: jinja2.Environment):
+    return _.pipe(
+        env,
+        add_functions,
+    )
+
+def metatemplates_path():
+    return _.pipe(
+        resource_filename('j2'),
+        Path,
+    )
+
+def metatemplate_env(mt_path: T.Union[str, Path] = None):
+    mt_path = mt_path or metatemplates_path()
+    env = jinja2.Environment(
+        variable_start_string='%%',
+        variable_end_string='%%',
+        block_start_string='<%',
+        block_end_string='%>',
+        comment_start_string='<#',
+        comment_end_string='#>',
+        loader=jinja2.FileSystemLoader(str(mt_path)),
+    )
+
+    return _.pipe(
+        env, 
+        add_meta_filters, 
+        add_meta_functions,
+    )
+

@@ -5,19 +5,14 @@ from ipaddress import ip_interface
 
 import click
 
-from ..toolz import (
-    pipe, compose, map, filter,
-    is_ip, strip_comments, strip, sortips,
-    get_ips_from_file, get_ips_from_str, noop,
-    clipboard_copy, zpad, unzpad,
-)
+from .. import toolz as _
 from .common import (
     get_input_content
 )
 from ..yaml import dump as dump_yaml
 
-cb_copy_ensure_nl = compose(
-    clipboard_copy,
+cb_copy_ensure_nl = _.compose(
+    _.clipboard_copy,
     lambda c: c if c.endswith('\n') else c + '\n'
 )
 
@@ -34,12 +29,12 @@ def diff_ips(patha, pathb):
     '''Given PATHA and PATHB of IPs, print difference (A-B)
 
     '''
-    ips_a = set(get_ips_from_file(patha))
-    ips_b = set(get_ips_from_file(pathb))
+    ips_a = set(_.get_ips_from_file(patha))
+    ips_b = set(_.get_ips_from_file(pathb))
 
-    pipe(
+    _.pipe(
         ips_a - ips_b,
-        sortips,
+        _.sortips,
         '\n'.join,
         print,
     )
@@ -56,12 +51,12 @@ def diff_ips(patha, pathb):
     type=click.Path(exists=True),
 )
 def int_ips(patha, pathb):
-    ips_a = set(get_ips_from_file(patha))
-    ips_b = set(get_ips_from_file(pathb))
+    ips_a = set(_.get_ips_from_file(patha))
+    ips_b = set(_.get_ips_from_file(pathb))
 
-    pipe(
+    _.pipe(
         ips_a & ips_b,
-        sortips,
+        _.sortips,
         '\n'.join,
         print,
     )
@@ -88,12 +83,12 @@ def sort_ips(inpath, keepcomments, clipboard):
     '''
     content = get_input_content(inpath, clipboard)
 
-    return pipe(
+    return _.pipe(
         content.splitlines(),
-        map(noop if keepcomments else strip_comments),
-        filter(lambda l: l.strip()),
-        filter(compose(is_ip, strip, strip_comments)),
-        sortips,
+        _.map(_.noop if keepcomments else _.strip_comments),
+        _.filter(lambda l: l.strip()),
+        _.filter(_.compose(_.is_ip, _.strip, _.strip_comments)),
+        _.sortips,
         '\n'.join,
         print if not clipboard else cb_copy_ensure_nl,
     )
@@ -132,13 +127,13 @@ def get_subnets(inpath, slash, from_clipboard, to_clipboard, yaml):
     def get_network(ip):
         return ip_interface(ip + f'/{slash}').network
             
-    return pipe(
-        get_ips_from_str(content),
-        map(get_network),
+    return _.pipe(
+        _.get_ips_from_str(content),
+        _.map(get_network),
         set,
         sorted,
-        map(str),
-        compose(dump_yaml, list) if yaml else '\n'.join,
+        _.map(str),
+        _.compose(dump_yaml, list) if yaml else '\n'.join,
         print if not to_clipboard else cb_copy_ensure_nl,
     )
 
@@ -182,11 +177,11 @@ def get_ips(inpath, from_clipboard, to_clipboard, prefix, stdout,
     '''
     content = get_input_content(inpath, from_clipboard)
             
-    return pipe(
-        get_ips_from_str(content),
-        set if unique else noop,
-        noop if no_sort else sortips,
-        map(lambda ip: f'{prefix}{ip}'),
+    return _.pipe(
+        _.get_ips_from_str(content),
+        set if unique else _.noop,
+        _.noop if no_sort else _.sortips,
+        _.map(lambda ip: f'{prefix}{ip}'),
         '\n'.join,
         print if stdout or not to_clipboard else cb_copy_ensure_nl,
     )
@@ -227,11 +222,11 @@ def zpad_ips(inpath, from_clipboard, to_clipboard, stdout, no_sort, unique):
     '''
     content = get_input_content(inpath, from_clipboard)
             
-    return pipe(
-        get_ips_from_str(content),
-        set if unique else noop,
-        noop if no_sort else sortips,
-        map(zpad),
+    return _.pipe(
+        _.get_ips_from_str(content),
+        set if unique else _.noop,
+        _.noop if no_sort else _.sortips,
+        _.map(_.zpad),
         '\n'.join,
         print if stdout or not to_clipboard else cb_copy_ensure_nl,
     )
@@ -271,11 +266,11 @@ def unzpad_ips(inpath, from_clipboard, to_clipboard, stdout, no_sort, unique):
     '''
     content = get_input_content(inpath, from_clipboard)
             
-    return pipe(
-        get_ips_from_str(content),
-        set if unique else noop,
-        noop if no_sort else sortips,
-        map(unzpad),
+    return _.pipe(
+        _.get_ips_from_str(content),
+        set if unique else _.noop,
+        _.noop if no_sort else _.sortips,
+        _.map(_.unzpad),
         '\n'.join,
         print if stdout or not to_clipboard else cb_copy_ensure_nl,
     )

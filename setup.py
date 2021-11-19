@@ -10,20 +10,25 @@ def version():
     match = version_re.search(Path('nsi/__init__.py').read_text())
     if match:
         return match.groupdict()['version'].strip()
-    return '0.0.1'
+    raise AttributeError(
+        'Could not find __version__ attribute in nsi/__init__.py'
+    )
 
 long_description = Path(HERE, 'README.md').resolve().read_text()
 
 setup(
-    name='nsi',
+    name='nsi-tools',
     packages=find_packages(
-        exclude=['tests'],
+        exclude=['tests', 'powershell'],
     ),
     package_dir={
         'nsi': 'nsi',
     },
 
     install_requires=[
+        'lxml',
+        'bs4',
+        'requests',
         'toolz',
         'pymaybe',
         'pyrsistent',
@@ -38,6 +43,10 @@ setup(
         'markdown',
         'jinja2',
         'pillow',
+        'msgpack',
+        'networkx',
+        'pyperclip',
+        'webdav',
     ],
 
     version=version(),
@@ -63,7 +72,7 @@ setup(
 
     zip_safe=False,
 
-    keywords=('utilities functional toolz networking security'),
+    keywords=('utilities functional toolz networking security infosec'),
 
     scripts=[
     ],
@@ -80,6 +89,29 @@ setup(
             'zpad=nsi.cli.ips:zpad_ips',
             'unzpad=nsi.cli.ips:unzpad_ips',
             'nsi-render=nsi.cli.text:render_templates'
+            'nsi-secrets-crawl=nsi.secrets_crawl:secrets_crawl',
+            'nsi-dump-hashes=nsi.cli.hashes:dump_hashes',
+            'nsi-ntlm-resolve=nsi.cli.hashes:ntlm_resolve',
+            'nsi-e4l-users=nsi.cli.enum4linux:dump_users',
+            'nsi-msf-ips=nsi.cli.msf:dump_spool_ips',
+            'nsi-nmap-ports=nsi.cli.nmap:nse_ports',
+            'nsi-nmap-diffports=nsi.cli.nmap:diff_ports',
+            'nsi-smb-shares=nsi.cli.smb:enumerate_smb_shares',
+            'nsi-smb-ls=nsi.cli.smb:smb_ls',
+            'nsi-dirb=nsi.cli.http:dirb_ips',
+            'nsi-nikto=nsi.cli.http:nikto_ips',
+            'nsi-fping-subnets=nsi.cli.fping:fping_subnets',
+            'nsi-nmap=nsi.cli.nmap:nmap_hosts',
+            'nsi-nmap-services=nsi.cli.nmap:nmap_services',
+            'nsi-dns-resolve=nsi.cli.dns:dns_resolve',
+            'nsi-bh-list-computers=nsi.cli.bloodhound:'
+            'bloodhound_list_computers',
+            'nsi-bh-list-users=nsi.cli.bloodhound:'
+            'bloodhound_list_users',
+            'nsi-bh-list-groups=nsi.cli.bloodhound:'
+            'bloodhound_list_groups',
+            'nsi-whois=nsi.cli.whois:whois_ips',
+            'nsi-ftp=nsi.cli.ftp:main',
         ],
     },
 )
