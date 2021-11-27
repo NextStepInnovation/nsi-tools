@@ -1,12 +1,7 @@
 import logging
 
 import coloredlogs
-from .toolz import merge
-
-def new_log(name):
-    log = logging.getLogger(name)
-    log.addHandler(logging.NullHandler())
-    return log
+from .toolz import merge, new_log   # noqa
 
 def setup_logging(loglevel: str, **config_kw):
     fmt = (

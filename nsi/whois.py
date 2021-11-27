@@ -1,4 +1,3 @@
-from pathlib import Path
 import re
 
 from . import toolz as _
@@ -70,5 +69,4 @@ def whois(ip):
         chunk_output,
         _.map(regex_chunk),
         tuple,
-    ) 
-
+    )

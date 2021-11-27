@@ -9,21 +9,26 @@ from webdav.client import Client
 from .config import with_config
 from .toolz import *
 
-
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
 URL = 'https://share.nextstepinnovation.com/'
 
+
 @with_config
 def get_nsi_client(config):
     return Client({
-        'webdav_hostname': URL,
-        'webdav_root': '/nextcloud/remote.php/webdav/',
-        'webdav_auth': HTTPBasicAuth(
-            config['webdav']['username'], config['webdav']['password'],
+        'webdav_hostname':
+        URL,
+        'webdav_root':
+        '/nextcloud/remote.php/webdav/',
+        'webdav_auth':
+        HTTPBasicAuth(
+            config['webdav']['username'],
+            config['webdav']['password'],
         ),
     })
+
 
 class DavPath:
     def __init__(self, *parts):
@@ -60,16 +65,12 @@ class DavPath:
     @property
     def info(self):
         return pipe(
-            info(self.client, self),
-            lambda info: merge(
+            info(self.client, self), lambda info: merge(
                 info, {
-                    'modified': (
-                        info['modified'] and parse_dt(info['modified'])
-                    ),
+                    'modified':
+                    (info['modified'] and parse_dt(info['modified'])),
                     'size': maybe_float(info['size']),
-                }
-            )
-        )
+                }))
 
     @property
     def client(self):
@@ -111,11 +112,14 @@ class DavPath:
 
     def load_binary(self):
         return load_binary(self.client, self)
-            
+
     def load_text(self):
         return load_text(self.client, self)
 
+
 version_re = re.compile(r'v(\d+)\.(\d+)')
+
+
 def file_version(path: DavPath):
     if version_re.search(path.path):
         return maybe_pipe(
@@ -126,32 +130,33 @@ def file_version(path: DavPath):
             tuple,
         )
 
+
 def increment_file_version(path: DavPath):
     if not version_re.search(path.path):
         log.error(f'DavPath {path} has no version. Adding v0.0')
         stem, ext = path.path_obj.stem, path.path_obj.suffix
-        return DavPath(
-            *concatv(path.parent.parts, [f'{stem}-v0.0{ext}'])
-        )
+        return DavPath(*concatv(path.parent.parts, [f'{stem}-v0.0{ext}']))
 
     major, minor = path.version
     stem = version_re.sub(f'v{major}.{minor + 1}', path.path_obj.stem)
     ext = path.path_obj.suffix
-    return DavPath(
-        *concatv(path.parent.parts, [f'{stem}{ext}'])
-    )
+    return DavPath(*concatv(path.parent.parts, [f'{stem}{ext}']))
+
 
 @curry
 def copy(client: Client, from_path: DavPath, to_path: DavPath):
     return client.copy(from_path.path, to_path.path)
 
+
 @curry
 def download(client: Client, from_path: DavPath, to_path: Path):
     return client.download(from_path.path, str(to_path))
 
+
 @curry
 def upload(client: Client, from_path: Path, to_path: DavPath):
     return client.upload(to_path.path, str(from_path))
+
 
 @curry
 def load_workbook(client: Client, path: DavPath):
@@ -162,12 +167,14 @@ def load_workbook(client: Client, path: DavPath):
         wb = openpyxl.load_workbook(str(wb_path))
     return wb
 
+
 @curry
 def upload_workbook(client: Client, wb: 'Workbook', path: DavPath):
     with tempfile.TemporaryDirectory() as tempdir:
         wb_path = Path(tempdir, 'wb.xlsx')
         wb.save(str(wb_path))
         upload(client, wb_path, path)
+
 
 @curry
 def load_binary(client: Client, path: DavPath):
@@ -177,6 +184,7 @@ def load_binary(client: Client, path: DavPath):
         content = temp_path.read_bytes()
     return content
 
+
 @curry
 def load_text(client: Client, path: DavPath):
     with tempfile.TemporaryDirectory() as tempdir:
@@ -184,6 +192,7 @@ def load_text(client: Client, path: DavPath):
         download(client, path, temp_path)
         content = temp_path.read_text()
     return content
+
 
 @curry
 def glob(client: Client, from_path: DavPath, glob_str: str):
@@ -198,6 +207,7 @@ def glob(client: Client, from_path: DavPath, glob_str: str):
         tuple,
     )
 
+
 @curry
 def ls(client: Client, path: DavPath):
     return pipe(
@@ -205,6 +215,7 @@ def ls(client: Client, path: DavPath):
         map(path),
         tuple,
     )
+
 
 @curry
 def info(client: Client, path: DavPath):
