@@ -8,15 +8,16 @@ import math
 import time
 
 import click
-import toolz.curried as _
-import larc
-import larc.common as __
 
 from .. import dns
 from .. import bloodhound
-from .common import ssh_getoutput, ssh_options
+from .. import toolz as _
+from .. import logging
+from .. import shell
+from .. import yaml
+from .common import ssh_getoutput, ssh_options, path_cb_or_stdin
 
-log = larc.logging.new_log(__name__)
+log = _.new_log(__name__)
 
 @click.command()
 @click.option(
@@ -66,16 +67,16 @@ log = larc.logging.new_log(__name__)
 def dns_resolve(inpath, bh, outpath, ssh, echo, dns_server, from_clipboard,
                 to_clipboard, csv, json, yaml, max_threads,
                 keep_duplicates, loglevel):
-    larc.logging.setup_logging(loglevel)
+    logging.setup_logging(loglevel)
 
     if bh:
         hosts = bloodhound.parser.get_computer_names(inpath)
     else:
         hosts = _.pipe(
-            larc.cli.common.path_cb_or_stdin(inpath, from_clipboard).splitlines(),
+            path_cb_or_stdin(inpath, from_clipboard).splitlines(),
         )
         
-    getoutput = larc.shell.getoutput(echo=echo)
+    getoutput = shell.getoutput(echo=echo)
     if ssh:
         getoutput = ssh_getoutput(ssh, echo=echo)
 
@@ -83,7 +84,7 @@ def dns_resolve(inpath, bh, outpath, ssh, echo, dns_server, from_clipboard,
         max_len = _.pipe(
             hosts,
             _.map(lambda h: h['name']),
-            __.maybe_max(key=len),
+            _.maybe_max(key=len),
             len,
         )
         return _.pipe(
@@ -94,7 +95,7 @@ def dns_resolve(inpath, bh, outpath, ssh, echo, dns_server, from_clipboard,
         )
 
     def csv_format(hosts):
-        return __.csv_rows_to_content(
+        return _.csv_rows_to_content(
             hosts, columns=['name', 'ip'],
         )
 
@@ -102,7 +103,7 @@ def dns_resolve(inpath, bh, outpath, ssh, echo, dns_server, from_clipboard,
         return _json.dumps(hosts)
 
     def yaml_format(hosts):
-        return larc.yaml.dump({'hosts': hosts})
+        return yaml.dump({'hosts': hosts})
 
     formatter = print_format
     if csv:
@@ -132,8 +133,8 @@ def dns_resolve(inpath, bh, outpath, ssh, echo, dns_server, from_clipboard,
     pipeline = _.compose_left(
         dns.resolve_hosts(getoutput=getoutput, dns_server=dns_server,
                           max_workers=max_threads),
-        __.sort_by(lambda h: (h['name'], __.ip_tuple(h['ip']))),
-        __.do_nothing if keep_duplicates else dedup,
+        _.sort_by(lambda h: (h['name'], _.ip_tuple(h['ip']))),
+        _.do_nothing if keep_duplicates else dedup,
         formatter,
         outputter,
     )

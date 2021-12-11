@@ -5,20 +5,17 @@
 import logging
 
 import click
-from toolz.curried import (
-    pipe, map, filter, mapcat, merge,
+
+from ..toolz import (
+    pipe, map, filter, mapcat, merge, new_log,
 )
-from larc import common
-from larc import parallel
-from larc import shell
-from larc.logging import setup_logging
-from larc.cli import common as cli_common
-
+from .. import toolz as _
+from .. import parallel, shell
+from ..logging import setup_logging
 from .. import fping
-from .common import ssh_getoutput, ssh_options
+from .common import path_cb_or_stdin, ssh_getoutput, ssh_options
 
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
+log = new_log(__name__)
 
 @click.command()
 @click.option(
@@ -56,8 +53,8 @@ def fping_subnets(cidr_path, target, ssh, echo,
         subnets = [target]
     else:
         subnets = pipe(
-            cli_common.path_cb_or_stdin(cidr_path, from_clipboard),
-            common.get_networks_from_content,
+            path_cb_or_stdin(cidr_path, from_clipboard),
+            _.get_networks_from_content,
         )
 
     getoutput = shell.getoutput(echo=echo)
@@ -68,11 +65,11 @@ def fping_subnets(cidr_path, target, ssh, echo,
     pmap = parallel.thread_map(max_workers=5)
     # pmap = parallel.process_map(max_workers=5)
 
-    print_f = common.clipboard_copy if to_clipboard else print
+    print_f = _.clipboard_copy if to_clipboard else print
     pipe(
         subnets,
         fping.fping_subnets(pmap=pmap, getoutput=getoutput),
-        common.sort_ips,
+        _.sort_ips,
         '\n'.join,
         print_f,
     )

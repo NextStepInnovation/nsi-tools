@@ -6,17 +6,14 @@ import logging
 import pprint
 
 import click
-import toolz.curried as _
-from larc import common as __
-from larc import parallel
-from larc import shell
-from larc.logging import setup_logging
 
-from .. import smb
+from .. import toolz as _
+from .. import (
+    parallel, shell, logging, smb,
+)
 from . import common
 
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
+log = logging.new_log(__name__)
 
 @click.command()
 @common.input_options
@@ -50,15 +47,15 @@ log.addHandler(logging.NullHandler())
 )
 def enumerate_smb_shares(ippath, output_dir, target, username, password, 
                          domain, ssh, max_workers, echo, force, loglevel):
-    setup_logging(loglevel)
+    logging.setup_logging(loglevel)
     echo = echo or loglevel == 'debug'
 
     if ippath:
         log.info(f'Reading IPs from path: {ippath}')
-        ips = __.get_ips_from_file(ippath)
+        ips = _.get_ips_from_file(ippath)
     elif target:
         log.info(f'Reading IP from target: {target}')
-        ips = __.ip_to_seq(target)
+        ips = _.ip_to_seq(target)
     else:
         log.error('No IP information given')
         raise click.UsageError(
@@ -120,14 +117,14 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
         
         return _.pipe(
             es_output,
-            _.map(__.cmerge({'user': username, 'pass': password})),
+            _.map(_.cmerge({'user': username, 'pass': password})),
             _.map(lambda share: (
                 share, test_share_perms(share['ip'], share['name'])
             )),
-            __.vmap(lambda share, output: (
-                share, __.maybe_first(output, default={})
+            _.vmap(lambda share, output: (
+                share, _.maybe_first(output, default={})
             )),
-            __.vmap(lambda share, perms: _.merge(
+            _.vmap(lambda share, perms: _.merge(
                 share, {'perms': perms},
             )),
             _.map(lambda share: (share, format_share(share))),
@@ -212,7 +209,7 @@ def smb_ls(host, path, share, username, password, domain, ssh, max_workers,
     '''Get 
 
     '''
-    setup_logging(loglevel)
+    logging.setup_logging(loglevel)
 
     echo = echo or loglevel == 'debug'
 

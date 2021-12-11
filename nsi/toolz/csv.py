@@ -5,7 +5,7 @@ from typing import Union, Iterable, Sequence
 from pathlib import Path
 
 from .common import (
-    pipe, curry, concatv,
+    pipe, curry, concatv, map, filter,
     is_seq, is_dict, new_log, call, cat_to_set,
 )
 
@@ -17,7 +17,7 @@ log = new_log(__name__)
 #
 # ----------------------------------------------------------------------
 
-csv.field_size_limit(2147483647/100)
+csv.field_size_limit(2147483647//100)
 
 @curry
 def csv_rows_from_path(path: Union[str, Path], *, header=True,

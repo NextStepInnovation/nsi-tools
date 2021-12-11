@@ -1,0 +1,22 @@
+<div class="table-responsive {{ data.classes | join(' ') }}">
+  <table id="discovered-systems-table"
+         class="table table-striped table-bordered table-sm">
+    {%- if data.caption %}<caption>{{ data.caption }}</caption>{% endif %}
+    <thead>
+      <tr>
+        {%- for col in data.cols %}
+          <th scope="col"{% if col.c %} class="{{ col.c | join(' ')}}"{% endif %}>{{ col.d }}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in data.rows %}
+        <tr {% if row.c %} class="{{ row.c | join(' ') }}"{% endif %}>
+          {%- for td in row.cols %}
+            <td {% if td.c %} class="{{ td.c | join(' ') }}"{% endif %}>{{ td.d | md_to_html | indent(12)}}</td>
+          {%- endfor %}
+        </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>

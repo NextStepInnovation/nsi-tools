@@ -11,22 +11,15 @@ import random
 
 import click
 import pyperclip
-import gevent
-import gevent.pool
 import toolz.curried as _
 from toolz.curried import (
     pipe, curry, compose, map, filter, do, groupby, mapcat,
 )
-from larc import common
-from larc import parallel
-from larc.logging import setup_logging
 
-from .. import http
+from .. import toolz as _
+from .. import parallel, logging, http
 
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
-
-pool = gevent.pool.Pool(multiprocessing.cpu_count() * 5)
+log = logging.new_log(__name__)
 
 @click.command()
 @click.option(
@@ -91,15 +84,15 @@ def dirb_ips(ippath, target, port, no_ssl, ssl, timeout, ssh_user, ssh_host,
     the same.
 
     '''
-    setup_logging(loglevel)
+    logging.setup_logging(loglevel)
     ssl, port = http.get_ssl_port(ssl, no_ssl, port)
 
     if ippath:
         log.info(f'Reading IPs from path: {ippath}')
-        ips = common.get_ips_from_file(ippath)
+        ips = _.get_ips_from_file(ippath)
     elif target:
         log.info(f'Reading IP from target: {target}')
-        ips = common.ip_to_seq(target)
+        ips = _.ip_to_seq(target)
     else:
         log.error('No IP information given')
         raise click.UsageError(
@@ -164,7 +157,7 @@ def dirb_ips(ippath, target, port, no_ssl, ssl, timeout, ssh_user, ssh_host,
     #     ips,
     #     filter(should_do_dirb),
     #     parallel.thread_map(lambda ip: (ip, dirb(ip)), max_workers=5),
-    #     common.vmap(lambda ip, output: (
+    #     _.vmap(lambda ip, output: (
     #         ip,
     #         output_raw(ip).write_text(output[0]),
     #         output_json(ip).write_text(json.dumps(output[1], indent=2)),
@@ -244,16 +237,16 @@ def nikto_ips(ippath, target, port, ssl, no_ssl, timeout, ssh_user, ssh_host,
     the same.
 
     '''
-    setup_logging(loglevel)
+    logging.setup_logging(loglevel)
 
     ssl, port = http.get_ssl_port(ssl, no_ssl, port)
     
     if ippath:
         log.info(f'Reading IPs from path: {ippath}')
-        ips = common.get_ips_from_file(ippath)
+        ips = _.get_ips_from_file(ippath)
     elif target:
         log.info(f'Reading IP from target: {target}')
-        ips = common.ip_to_seq(target)
+        ips = _.ip_to_seq(target)
     else:
         log.error('No IP information given')
         raise click.UsageError(
@@ -309,7 +302,7 @@ def nikto_ips(ippath, target, port, ssl, no_ssl, timeout, ssh_user, ssh_host,
         (
             (lambda ips: random.sample(ips, len(ips)))
             if randomize
-            else common.do_nothing
+            else _.do_nothing
         ),
         do(print),
         filter(should_do_nikto),

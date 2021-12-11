@@ -5,7 +5,7 @@ from typing import (
 
 from .common import (
     pipe, merge, curry, assoc, dissoc, vmap, get,
-    to_bytes, is_seq, is_dict,
+    to_bytes, is_seq, is_dict, map, filter,
 )
 from .pyrsistent import no_pyrsistent
 
@@ -21,6 +21,7 @@ def dict_hash(hash_func, d):
 
     Examples:
 
+    >>> import hashlib
     >>> pipe({"a": 1}, dict_hash(hashlib.sha1))
     'e4ad4daad53a2eec0313386ada88211e50d693bd'
     '''
@@ -138,6 +139,13 @@ def update_key_v(key: Hashable, value_function, d, default=None):
 @curry
 def only_if_key(key, func, d):
     '''Return func(d) if key in d, otherwise return d
+
+    Examples:
+
+    >>> pipe({}, only_if_key('a', lambda d: d['a']**2))
+    {}
+    >>> pipe({'a': 2}, only_if_key('a', lambda d: d['a']**2))
+    4
 
     '''
     return func(d) if key in d else d
@@ -303,6 +311,11 @@ switch_keys = replace_key
 def valmaprec(func, d, **kw):
     '''Recursively map values of a dictionary (traverses Mapping and
     Sequence objects) using a function
+
+    Examples:
+
+    >>> pipe({'a': {'b': 2, 'c': [2, 3, 4, 5]}}, valmaprec(lambda i: i**2))
+    {'a': {'b': 4, 'c': [4, 9, 16, 25]}}
 
     '''
     if is_dict(d):

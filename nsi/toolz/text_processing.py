@@ -3,7 +3,7 @@ from typing import Union, Iterable
 import pyperclip
 
 from .common import (
-    pipe, curry,
+    pipe, curry, map, filter,
     is_seq, is_str, to_str,
 )
 

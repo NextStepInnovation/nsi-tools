@@ -10,7 +10,7 @@ import ifcfg
 
 from .common import (
     pipe, partial, compose, curry, mapcat,
-    new_log, sort_by, strip, to_str,
+    new_log, sort_by, strip, to_str, map, filter,
 )
 from .text_processing import strip_comments
 

@@ -60,18 +60,23 @@ def tt_font(path):
     return font
 
 def cambria():
-    fmap = pipe(
+    font_map = pipe(
         [(frozenset(['italic', 'bold']), 'Cambria Bold Italic.ttf'),
          (frozenset(['bold']), 'Cambria Bold.ttf'),
          (frozenset(['italic']), 'Cambria Italic.ttf'),
          (frozenset(['math']), 'Cambria Math.ttf'),
          (frozenset(), 'Cambria.ttf')],
-        map(lambda d: (d[0], tt_font(get_font(d[1])))),
+        map(lambda d: (
+            d[0], pipe(
+                get_font(d[1]),
+                tt_font,
+            )
+        )),
         dict,
     )
 
     def font(*mods):
-        return fmap[frozenset(mods)]
+        return font_map[frozenset(mods)]
     return font
 
 @curry

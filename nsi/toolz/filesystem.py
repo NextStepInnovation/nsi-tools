@@ -2,14 +2,16 @@ import os
 from pathlib import Path
 import inspect
 import functools
+import tempfile # noqa
 from typing import *
 
 from pymaybe import Nothing
 import chardet
+from toolz.functoolz import compose_left
 
 from .common import (
-    pipe, call, concatv, vmapcat, curry,
-    new_log,
+    pipe, call, concatv, vmapcat, curry, map, filter,
+    new_log, splitlines
 )
 from .time import ctime, dt_ctime
 
@@ -43,6 +45,14 @@ def walk(path):
 def walkmap(func, root):
     '''Map function over all paths in os.walk(root)
 
+    >>> with tempfile.TemporaryDirectory() as temp:
+    ...     root = Path(temp)
+    ...     Path(root, 'a', 'b').mkdir(parents=True)
+    ...     _ = Path(root, 'a', 'a.txt').write_text('hello')
+    ...     _ = Path(root, 'a', 'b', 'b.txt').write_text('world')
+    ...     _ = pipe(root, walkmap(lambda p: print(p.read_text())), tuple)
+    hello
+    world
     '''
     return pipe(
         walk(root),
@@ -141,17 +151,6 @@ def ensure_paths(func, *, expanduser: bool=True):
 
 @ensure_paths
 def read_text(path: Union[str, Path]):
-    encoding = 'utf-8'
-    with path.open('rb') as rfp:
-        test_bytes = rfp.read(100)
-        result = chardet.detect(test_bytes)
-        log.debug(f'read_text: chardet result {result}')
-        if result['confidence'] > 0.8:
-            encoding = result['encoding']
-    return path.read_text(encoding)
-        
-
-def slurp(path: Union[str, Path]):
     '''Read contents of file as str
 
     Examples:
@@ -160,24 +159,40 @@ def slurp(path: Union[str, Path]):
     ...     root = Path(temp)
     ...     path = root / 'test.txt'
     ...     _ = path.write_text('file content')
-    ...     content = pipe(path, slurp)
+    ...     content = pipe(path, read_text)
     >>> content
     'file content'
 
     '''
-    return pipe(
-        path,
-        read_text,
-    )
+    encoding = 'utf-8'
+    with path.open('rb') as rfp:
+        test_bytes = rfp.read(100)
+        result = chardet.detect(test_bytes)
+        log.debug(f'read_text: chardet result {result}')
+        if result['confidence'] > 0.8:
+            encoding = result['encoding']
+    return path.read_text(encoding)
+slurp = read_text    
+slurplines = compose_left(slurp, splitlines)
 
-def slurp_lines(path: Union[str, Path]):
-    '''Slurp file contents and split lines
-    '''    
-    return pipe(
-        path,
-        slurp,
-        call('splitlines')
-    )
+@ensure_paths
+def read_bytes(path: Union[str, Path]):
+    '''Read contents of file as bytes
+
+    Examples:
+
+    >>> with tempfile.TemporaryDirectory() as temp:
+    ...     root = Path(temp)
+    ...     path = root / 'test.txt'
+    ...     _ = path.write_text('file content')
+    ...     content = pipe(path, read_bytes)
+    >>> content
+    b'file content'
+
+    '''
+    return path.read_bytes()
+slurpb = read_bytes
+slurpblines = compose_left(slurp, splitlines)
 
 @curry
 @ensure_paths

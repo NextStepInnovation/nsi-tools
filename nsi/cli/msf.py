@@ -6,12 +6,8 @@ from pathlib import Path
 
 import click
 import pyperclip
-from toolz import pipe, curry, dissoc, merge
-from toolz.curried import map, filter, mapcat, do
 
-from ..common import (
-    get_sam_hashes, get_mscache_hashes, vmap,
-)
+from ..toolz import pipe, vmap
 
 ip_re = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
 spool_ip_re = re.compile(

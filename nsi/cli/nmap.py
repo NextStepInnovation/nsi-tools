@@ -10,26 +10,19 @@ import json
 
 import click
 import pyperclip
-from toolz import pipe, curry, dissoc, merge
-from toolz.curried import map, filter, mapcat, do
-import toolz.curried as _
 
-import larc
-import larc.common as __
-from larc import common, shell, parallel
-from larc.logging import setup_logging
-from larc.cli import common as cli_common
-
-from .. import nmap
-from ..common import (
-    get_sam_hashes, get_mscache_hashes, get_content, xlsx_pbcopy,
+from .. import toolz as _
+from ..toolz import (
+    pipe, map, filter, mapcat, xlsx_to_clipboard,
+)
+from .. import (
+    shell, parallel, logging, nmap, yaml,
 )
 from .common import (
-    ssh_options, ssh_getoutput,
+    ssh_options, ssh_getoutput, path_cb_or_stdin, get_content,
 )
 
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
+log = logging.new_log(__name__)
 
 nmap_port_re = re.compile(r'^(\d+)/tcp\s+open.*$', re.M)
 
@@ -68,10 +61,10 @@ def nse_ports(inpath, clipboard, stdout, no_sort, sep):
 
     return pipe(
         get_ports_from_content(content),
-        common.do_nothing if no_sort else sorted,
+        _.noop if no_sort else sorted,
         map(str),
         sep.join,
-        print if stdout or not clipboard else xlsx_pbcopy,
+        print if stdout or not clipboard else xlsx_to_clipboard,
     )
 
 
@@ -100,7 +93,7 @@ def diff_ports(patha, pathb, clipboard):
         sorted,
         map(str),
         '\n'.join,
-        print if not clipboard else xlsx_pbcopy,
+        print if not clipboard else xlsx_to_clipboard,
     )
 
 
@@ -162,18 +155,18 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
     information (-c/--from-clipboard), or from stdin.
 
     '''
-    setup_logging(loglevel)
+    logging.setup_logging(loglevel)
 
-    input_content = target or cli_common.path_cb_or_stdin(
+    input_content = target or path_cb_or_stdin(
         input_path, from_clipboard
     )
 
     ips = pipe(
         input_content,
         lambda c: c.splitlines(),
-        common.strip_comments,
+        _.strip_comments,
         filter(None),
-        mapcat(common.ip_to_seq),
+        mapcat(_.ip_to_seq),
         tuple,
     )
 
@@ -207,9 +200,9 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
 
 def get_services(path):
     log.info(f'Loading YAML path: {path}')
-    data = larc.yaml.read_yaml(path)
+    data = yaml.read_yaml(path)
     ports = data.get('host', {}).get('ports', {}).get('port', [])
-    if __.is_dict(ports):
+    if _.is_dict(ports):
         ports = [ports]
     for port in ports:
         port_number  = port.get('portid')
@@ -243,10 +236,11 @@ def nmap_services(paths, no_ports, loglevel):
         
     _.pipe(
         paths,
-        larc.parallel.thread_map(get_services_from_json),
+        parallel.thread_map(get_services_from_json),
         _.concat,
-        __.sort_by(lambda r: ipaddress.ip_address(r[0])),
+        _.sort_by(lambda r: ipaddress.ip_address(r[0])),
         _.map('\t'.join),
+
         '\n'.join,
         print
     )

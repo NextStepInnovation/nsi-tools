@@ -5,7 +5,7 @@ import requests
 import jmespath
 from pymaybe import Nothing
 
-from .common import curry, is_none, new_log
+from .common import curry, is_none, new_log, map, filter, pipe
 
 log = new_log(__name__)
 

@@ -4,7 +4,7 @@ import pymaybe
 from pyrsistent import pmap, pvector
 
 from .common import (
-    pipe, vmap, compose_left, curry,
+    pipe, vmap, compose_left, curry, map, filter,
     is_dict, is_seq, is_float, is_str, is_int,
     maybe_float, maybe_int,
 )

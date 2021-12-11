@@ -3,19 +3,19 @@ import markdown as _markdown
 from . import (
     meta_yaml, card, table, yaml_data, image_fig,
 )
-from .. import toolz as _
+from ..toolz import *
 from .. import logging
 
 log = logging.new_log(__name__)
 
-@_.curry
+@curry
 def markdown(content: str, **kwargs):
     class HtmlWithMeta(str):
         meta = None
 
     md = _markdown.Markdown(
-        extensions=_.pipe(
-            _.concatv(
+        extensions=pipe(
+            concatv(
                 ['nsi.markdown.meta_yaml',
                  'nsi.markdown.yaml_data',
                  'nsi.markdown.card',
@@ -27,7 +27,7 @@ def markdown(content: str, **kwargs):
             tuple,
         ),
             
-        extension_configs=_.merge(
+        extension_configs=merge(
             {
                 'extra': {},
                 'admonition': {
@@ -46,6 +46,22 @@ def markdown(content: str, **kwargs):
     return output
 
 def make_table(columns=None, col_map=None):
+    '''Functional markdown table maker. Given columns (i.e. row dict keys) and
+    map from those keys to final header names, return table-making function that
+    takes an iterable of rows and produces a markdown table.
+
+    Examples:
+
+    >>> pipe(
+    ...    [{'a': 1, 'b': 2}, {'a': 3, 'b': 4}], 
+    ...    make_table(['a', 'b'], {'a': 'ColA', 'b': 'ColB'}),
+    ...    print,
+    ... )
+    | ColA | ColB |
+    |:--|:--|
+    | 1 | 2 |
+    | 3 | 4 |
+    '''
     def maker(rows):
         rows = tuple(rows)
         if not rows:
@@ -59,7 +75,7 @@ def make_table(columns=None, col_map=None):
         else:
             header = [col_map[c] for c in columns]
 
-        if _.is_seq(rows[0]):
+        if is_seq(rows[0]):
             value_f = lambda r: [r[i] for i, _c in enumerate(columns)]
         else:
             value_f = lambda r: [r[c] for c in columns]
@@ -72,10 +88,21 @@ def make_table(columns=None, col_map=None):
             except:
                 log.exception(row)
                 raise
-            yield '| ' + _.pipe(
+            yield '| ' + pipe(
                 values,
-                _.map(str),
+                map(str),
                 ' | '.join
             ) + ' |'
 
-    return _.compose_left(maker, '\n'.join)
+    return compose_left(maker, '\n'.join)
+
+def md_to_pandoc(text):
+    '''Convert any NSI-specific markdown content to pandoc-friendly markdown
+    '''
+    return pipe(
+        text,
+        splitlines,
+        # insert mods here,
+        '\n'.join,
+    )
+

@@ -1,12 +1,9 @@
 '''Tools for dealing with enum4linux output
 '''
 import click
-from toolz.curried import (
-    pipe,
-)
-from larc.common import vmap
-from larc.cli.common import get_input_content
 
+from .common import get_input_content
+from ..toolz import pipe, vmap
 from ..enum4linux import user_re
 
 @click.command()

@@ -9,15 +9,17 @@ import collections
 import textwrap
 import inspect
 import importlib
+import multipledispatch
 from typing import *
 
-import pymaybe
-from pymaybe import maybe, Maybe, Nothing, Something
+from pymaybe import maybe, Nothing
 
 try:
     from cytoolz.curried import *
 except ImportError:
     from toolz.curried import *
+
+dispatch = multipledispatch.dispatch
 
 # ----------------------------------------------------------------------
 #
@@ -38,7 +40,7 @@ def log_lines(log_function, lines):
         lines,
         mapcat(lambda line: line.splitlines()),
         filter(None),
-        map(log_function),
+        mapdo(log_function),
     )
 
 @curry
@@ -156,6 +158,10 @@ def call(method_name, *a, **kw):
 def contains(value, obj):
     '''Curried in operator
 
+    Examples:
+
+    >>> pipe('a string with asdf', contains('asdf'))
+    True
     '''
     return value in obj
 
@@ -283,23 +289,25 @@ def wrap_text(width, text):
         '\n'.join,
     )
 
-def strip(chars=None):
+@curry
+def strip(value: str, chars=None):
     'In-line string strip function'
+    match args:
+        case (content, *_):
+            return content.strip()
     def stripper(content):
         return content.strip(chars)
     return stripper
 
-def split(sep: str=None, maxsplit=1):
+@curry
+def split(sep: str, value: str, maxsplit=1):
     'In-line string split function'
-    def splitter(value: str):
-        return value.split(sep, maxsplit)
-    return splitter
+    return value.split(sep, maxsplit)
 
-def splitlines(keepends=False):
+@curry
+def splitlines(value: str, keepends=False):
     'In-line string splitlines function'
-    def liner(value: str):
-        return value.splitlines(keepends)
-    return liner
+    return value.splitlines(keepends=keepends)
 
 def lower(value: str):
     'In-line string lower function'
@@ -309,15 +317,25 @@ def upper(value: str):
     'In-line string upper function'
     return value.upper()
 
+@curry
+def replace(old: str, new: str, value: str, count: int = -1):
+    'In-line string replace'
+    return value.replace(old, new, count)
+
 # ---------------------------
 # Dictionary in-line functions
 
-@curry
-def replace(a: str, b: str, value: str, **kw):
-    return value.replace(a, b, **kw)
-
 def items(d: dict):
+    'Items accessor for dictionaries'
     return d.items()
+
+def values(d: dict):
+    'Values accessor for dictionaries'
+    return d.values()
+
+def keys(d: dict):
+    'Keys accessor for dictionaries'
+    return d.keys()
 
 # ----------------------------------------------------------------------
 #

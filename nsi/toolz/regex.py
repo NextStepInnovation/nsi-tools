@@ -1,12 +1,13 @@
-import re
-from typing import Union, Sequence, Iterable
+from typing import Union, Sequence, Iterable, Callable, Any
 
+import re as _re
+import regex as re
 from pymaybe import maybe, Nothing
+from toolz.functoolz import complement
 
-from .common import (
-    pipe, merge, curry, juxt, compose, concat, vcall, vmap,
-    is_str,
-)
+from .common import *
+
+log = new_log(__name__)
 
 # ----------------------------------------------------------------------
 #
@@ -14,14 +15,17 @@ from .common import (
 #
 # ----------------------------------------------------------------------
 
-Regex = Union[str, re.Pattern]
+Regex = Union[str, _re.Pattern, re.Pattern]
+
+def is_regex(obj: Regex):
+    return isinstance(obj, (_re.Pattern, re.Pattern))
 
 def to_regex(obj: Regex, flags=0):
     match obj:
-        case regex if isinstance(regex, re.Pattern):
+        case regex if is_regex(regex):
             return regex
     return re.compile(obj, flags)
-        
+
 def re_search(regex: Regex, flags=0):
     '''Given a regex (str or re.Pattern), and a string, return the match object 
     from a re.search
@@ -56,6 +60,7 @@ def groupdicts(regex: Regex, iterable, keep_match=False, flags=0):
         iterable,
         map(groupdict(regex, flags=flags, keep_match=keep_match)),
         filter(None),
+        tuple,
     )
 
 @curry
@@ -70,29 +75,63 @@ def groupdicts_from_regexes(regexes: Sequence[re.Pattern],
         concat,
     )
 
-@curry
-def grep(raw_regex, iterable, **kw):
-    regex = re.compile(raw_regex, **kw)
-    return filter(lambda s: regex.search(s), iterable)
+# ---------------------------
+#
+# Searching
+#
+# ---------------------------
 
+_get = get
 @curry
-def grep_t(raw_regex, iterable, **kw):
-    return pipe(
-        grep(raw_regex, iterable, **kw),
-        tuple,
+def grep(raw_regex: Regex, iterable: Iterable[Union[str, Sequence, dict]],
+         exclude: bool = False, get: Union[Callable, Any] = None, 
+         to_tuple: bool = False, **re_kw):
+    '''Given a regular expression (either str or compiled regex), filter
+    iterable of strings (or indexable) by that regex
+
+    Args:
+
+    - raw_regex (Union[str, re.Pattern])
+    - iterable (Iterable[str])
+    - exclude (bool): return strings that do not match regex
+    - get (Union[Callable, key/index]): get function/key/index argument to
+      select from dict/sequence prior to regex test
+    - to_tuple (bool): return a tuple rather than an iterator
+
+    Examples:
+
+    >>> pipe(['abc', 'aec', 'qwer'], grep(r'^a.c$'), tuple) 
+    ('abc', 'aec')
+
+    >>> pipe(['abc', 'aec', 'qwer'], grep(r'^a.c$', exclude=True), tuple) 
+    ('qwer',)
+
+    >>> pipe(['abc', 'aec', 'qwer'], grep(r'^a.c$', to_tuple=True)) 
+    ('abc', 'aec')
+
+    >>> pipe(
+    ...   [{'a': 'abc'}, {'a': 'aec'}, {'a': 'qwer'}], 
+    ...   grep(r'^a.c$', get='a'), 
+    ...   tuple
+    ... )
+    ({'a': 'abc'}, {'a': 'aec'})
+
+    '''
+    regex = re.compile(raw_regex, **re_kw)
+    get = _get(get) if get else noop
+    search = compose_left(
+        get,
+        regex.search,
+        complement(bool) if exclude else bool,
     )
-
-@curry
-def grepv(raw_regex, iterable, **kw):
-    regex = re.compile(raw_regex, **kw)
-    return filter(lambda s: not regex.search(s), iterable)
-
-@curry
-def grepv_t(raw_regex, iterable, **kw):
     return pipe(
-        grepv(raw_regex, iterable, **kw),
-        tuple,
+        iterable,
+        filter(search),
+        tuple if to_tuple else noop,
     )
+grep_t = grep(to_tuple=True)
+grepv = grep(exclude=True)
+grepv_t = grep(exclude=True, to_tuple=True)
 
 @curry
 def grepitems(raw_regex, iterable, **kw):

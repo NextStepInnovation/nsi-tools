@@ -1,0 +1,17 @@
+<div class="text-center mb-5">
+<figure class="figure">
+  {%- if figure.images %}
+    {%- for data in figure.images %}
+      <p>
+        {% if figure.filename %}<a download="{{ figure.filename }}" href="data:img/{{ figure.type }};base64,{{ data }}">{% endif %}
+          <img class="img-fluid figure-img rounded border" {{ figure.style }} 
+               src="data:img/{{ figure.type }};base64,{{ data }}" />
+        {% if figure.filename %}</a>{% endif %}
+      </p>
+    {%- endfor %}
+    <figcaption class="figure-caption">{{ figure.caption }}</figcaption>
+  {%- else %}
+    <figcaption class="figure-caption">No images for search image: {{ figure.search }} and caption: {{ figure.caption }}</figcaption>
+  {%- endif %}
+</figure>
+</div>

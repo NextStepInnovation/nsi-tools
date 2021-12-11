@@ -3,14 +3,12 @@ import logging
 import pprint
 
 import click
-from toolz.curried import *
-import larc
-from larc.common import *
 
-from .. import ftp
+from ..toolz import *
+from .. import ftp, logging, shell, parallel, yaml
 from . import common
 
-log = larc.logging.new_log(__name__)
+log = new_log(__name__)
 
 @click.group()
 @click.option(
@@ -18,7 +16,7 @@ log = larc.logging.new_log(__name__)
     help=('Log output level (default: info)'),
 )
 def main(loglevel):
-    larc.logging.setup_logging(loglevel)
+    logging.setup_logging(loglevel)
 
 @main.command()
 @common.input_options
@@ -61,16 +59,16 @@ def anon(ippath, target, output_dir, username, password,
         )
 
 
-    getoutput = larc.shell.getoutput(echo=echo)
+    getoutput = shell.getoutput(echo=echo)
     if ssh:
         getoutput = common.ssh_getoutput(ssh, echo=echo)
 
-    pmap = larc.parallel.thread_map(max_workers=max_workers)
+    pmap = parallel.thread_map(max_workers=max_workers)
     pipe(
         ips,
         pmap(lambda ip: (ip, ftp.anon_contents(ip))),
         dict,
-        larc.yaml.dump,
+        yaml.dump,
         print,
     )
 

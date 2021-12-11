@@ -1,0 +1,9 @@
+{% macro card(title, content) %}
+  <a name="{{ title.lower().split(' ') | join('-') }}"></a>
+  <div class="card mt-5 hideable" >
+    <h5 class="card-header nsi-secondary-bg" >{{ title }}</h5>
+    <div class="card-body searchable">
+      {{ content | md_to_html }}
+    </div>
+  </div>
+{% endmacro %}

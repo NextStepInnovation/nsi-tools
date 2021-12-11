@@ -1,20 +1,19 @@
 from pathlib import Path
 
 import click
-import toolz.curried as _
-import larc.common as __
-import larc
-from . import common
-from .. import whois
 
-log = larc.logging.new_log(__name__)
+from .. import toolz as _
+from .. import whois, logging, yaml, parallel
+from . import common
+
+log = logging.new_log(__name__)
 
 @_.curry
 def output_whois(outdir, host):
     outpath = outdir / f'{host}.yml'
     return _.pipe(
         {host: whois.whois(host)},
-        larc.yaml.dump,
+        yaml.dump,
         outpath.write_text,
     )
 
@@ -28,7 +27,7 @@ def output_whois(outdir, host):
 )
 @common.loglevel
 def whois_ips(inpath, outdir, from_clipboard, max_workers, loglevel):
-    larc.logging.setup_logging(loglevel)
+    logging.setup_logging(loglevel)
     content = common.get_content(inpath, from_clipboard)
 
     outpath = Path(outdir)
@@ -36,16 +35,16 @@ def whois_ips(inpath, outdir, from_clipboard, max_workers, loglevel):
 
     ips = _.pipe(
         content.splitlines(),
-        _.map(__.strip_comments),
+        _.map(_.strip_comments),
         _.filter(lambda l: l.strip()),
-        _.filter(_.compose_left(__.strip_comments, __.strip, __.is_ip)),
-        __.sortips,
+        _.filter(_.compose_left(_.strip_comments, _.strip, _.is_ip)),
+        _.sortips,
     )
 
     log.info(f'Looking up {len(ips)} IPs')
     output = _.pipe(
         ips,
-        larc.parallel.thread_map(output_whois(outpath), max_workers=max_workers),
+        parallel.thread_map(output_whois(outpath), max_workers=max_workers),
         tuple,
     )
     log.info(output[0])
