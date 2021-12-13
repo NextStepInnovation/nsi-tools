@@ -3,12 +3,19 @@ import select
 import logging
 from pathlib import Path
 
-from .toolz import curry, merge
 import paramiko
 from pymaybe import Nothing
 
+from .toolz import *
+from . import shell
+
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
+
+def shorten(s):
+    if len(s) > 500:
+        return s[:250] + ' [...] ' + s[-250:]
+    return s
 
 @curry
 def getoutput(hostname, command, echo=False, sudo=False, **ssh_kw):
@@ -58,11 +65,6 @@ def getoutput(hostname, command, echo=False, sudo=False, **ssh_kw):
         return Nothing()
 
     try:
-        def shorten(s):
-            if len(s) > 500:
-                return s[:250] + ' [...] ' + s[-250:]
-            return s
-
         exec_kw = {}
         if sudo:
             log.info(f'[ssh.getoutput] elevating to SUDO')
@@ -100,3 +102,26 @@ def getoutput(hostname, command, echo=False, sudo=False, **ssh_kw):
         client.close()
 
     return output.decode()
+
+@curry
+def getoutput(hostname, command, echo=False, sudo=False, **ssh_kw):
+    '''subprocess.getoutput equivalent over SSH
+
+    Relies on public-key authentication currently
+
+    Args:
+      command (str): command to execute over SSH
+    
+      echo (bool=False): echo command progress to stdout
+    
+    '''
+
+    ssh_command = f'ssh {hostname} "{command}"'
+    log.info(f'[ssh.getoutput] command: {shorten(ssh_command)}')
+    stdout = shell.getoutput(
+        ssh_command,
+        echo=echo,
+    )
+    log.info(stdout)
+
+    return stdout

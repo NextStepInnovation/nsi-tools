@@ -292,12 +292,7 @@ def wrap_text(width, text):
 @curry
 def strip(value: str, chars=None):
     'In-line string strip function'
-    match args:
-        case (content, *_):
-            return content.strip()
-    def stripper(content):
-        return content.strip(chars)
-    return stripper
+    return value.strip(chars)
 
 @curry
 def split(sep: str, value: str, maxsplit=1):
