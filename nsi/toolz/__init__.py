@@ -59,7 +59,7 @@ __all__ = [
     # common
     'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t',
     'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 'do_error',
-    'do_info', 'do_log', 'error_raise', 'find', 'first_true',
+    'do_info', 'do_log', 'error_raise', 'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'function_from_path', 'get_t', 'help_text',
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
