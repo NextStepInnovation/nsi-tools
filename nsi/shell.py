@@ -96,7 +96,7 @@ def shell_iter(command, *, echo: bool = True,
     '''
     popen_kw = merge({
         'stdout': subprocess.PIPE,
-        'stderr': subprocess.PIPE,
+        'stderr': subprocess.STDOUT,
     }, popen_kw)
 
     command_split = pipe(

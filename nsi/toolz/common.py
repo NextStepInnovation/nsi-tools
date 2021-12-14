@@ -295,7 +295,7 @@ def strip(value: str, chars=None):
     return value.strip(chars)
 
 @curry
-def split(sep: str, value: str, maxsplit=1):
+def split(value: str, sep: str = None, maxsplit=-1):
     'In-line string split function'
     return value.split(sep, maxsplit)
 
@@ -594,6 +594,14 @@ def map_t(func, values):
     return pipe(
         values,
         map(func),
+        tuple,
+    )
+
+@curry
+def filter_t(func, values):
+    return pipe(
+        values,
+        filter(func),
         tuple,
     )
 

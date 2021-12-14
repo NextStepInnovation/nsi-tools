@@ -50,6 +50,9 @@ def get_id(d):
         f'Could not find ID for {d_str}'
     )
 
+def get_email(d):
+    return d.get('Properties', {}).get('email') or ''
+
 def bloodhound_data(data: dict):
     log.info(
         'Creating bloodhound data...'
@@ -252,13 +255,14 @@ def list_objects(inpath, outpath, ssh, echo, from_clipboard,
 
     def csv_format(hosts):
         return csv_rows_to_content(
-            hosts, columns=['name', 'id'],
+            hosts, columns=['name', 'id', 'email'],
         )
 
     def print_formatter(hosts):
         return pipe(
             hosts,
-            vmap(lambda name, id: f'{name}\t{id}'),
+            map('\t'.join),
+            # vmap(lambda name, id: f'{name}\t{id}'),
             '\n'.join,
         )
     
@@ -272,7 +276,7 @@ def list_objects(inpath, outpath, ssh, echo, from_clipboard,
 
     pipe(
         obj_func(data),
-        map(lambda c: (get_name(c), get_id(c))),
+        map(lambda c: (get_name(c), get_id(c), get_email(c))),
         set,
         sorted,
         formatter,
