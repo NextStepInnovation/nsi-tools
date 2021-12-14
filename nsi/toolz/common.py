@@ -579,8 +579,8 @@ def vdo(func, value):
     return do(vcall(func), value)
 
 @curry
-def do_log(logger, msg, value, **kw):
-    logger(msg, **kw)
+def do_log(logger, value, **kw):
+    logger(f'Value:\n{pprint.pformat(value)}', **kw)
     return value
 do_info = compose_left(
     lambda logger: do_log(logger.info)
