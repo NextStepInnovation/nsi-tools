@@ -138,7 +138,7 @@ Process List
  180   700   vmtoolsd.exe       x86   0        NT AUTHORITY\SYSTEM           C:\Program Files\VMware\VMware Tools\vmtoolsd.exe
 '''
 
-ps_regex = re.compile('''\
+ps_regex = re.compile(r'''\
 ^\s(P<pid>[\d ]{5})\s
 ^\s(P<ppid>[\d ]{5})\s
 ^\s(P<name>.{17})\s
