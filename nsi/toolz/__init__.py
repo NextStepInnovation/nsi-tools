@@ -21,6 +21,7 @@ from .random import *
 from .regex import *
 from .text_processing import *
 from .time import *
+from .binary_data import *
 
 __all__ = [
     # toolz.curried
@@ -32,7 +33,7 @@ __all__ = [
     'groupby', 'identity', 'interleave', 'interpose', 'isdistinct',
     'isiterable', 'itemfilter', 'itemmap', 'iterate', 'join',
     'juxt', 'keyfilter', 'keymap', 'last', 'map',
-    'mapcat', 'memoize', 'merge', 'merge_sorted', 'merge_with',
+    'mapcat', 'maybe', 'memoize', 'merge', 'merge_sorted', 'merge_with',
     'nth', 'operator', 'partial', 'partition', 'partition_all',
     'partitionby', 'peek', 'peekn', 'pipe', 'pluck',
     'random_sample', 'reduce', 'reduceby', 'remove', 'second',
@@ -41,7 +42,7 @@ __all__ = [
     'valfilter', 'valmap',
 
     # json
-    'jmes', 'json_dumps', 'json_loads', 'log', 'maybe_json',
+    'jmes', 'json_dumps', 'json_loads', 'maybe_json',
 
     # http
     'session_with_cookies', 'url', 'valid_content', 'valid_response',
@@ -52,18 +53,18 @@ __all__ = [
     'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines',
 
     # filesystem
-    'POS_PARAM_KINDS', 'backup_path', 'check_parents_for_file', 'ensure_paths', 'is_path',
-    'log', 'newer', 'older', 'peek', 'read_text', 'read_bytes',
+    'POS_PARAM_KINDS', 'backup_path', 'check_parents_for_file', 'ensure_paths', 
+    'is_path', 'newer', 'older', 'binpeek', 'read_text', 'read_bytes',
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'to_paths', 'walk', 'walkmap',
 
     # common
-    'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t',
+    'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 'cconcatv',
     'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 'do_error',
     'do_info', 'do_log', 'error_raise', 'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'function_from_path', 'get_t', 'help_text',
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
-    'is_some', 'is_str', 'items', 'log', 'log_lines',
+    'is_some', 'is_str', 'items', 'log_lines', 
     'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif',
     'max', 'maybe_first', 'maybe_float', 'maybe_int', 'maybe_last',
     'maybe_max', 'maybe_min', 'maybe_pipe', 'maybe_second', 'min',
@@ -103,7 +104,8 @@ __all__ = [
     'vbakedict',
 
     # hashing
-    'b64decode', 'b64decode_str', 'b64encode', 'b64encode_str', 'hash',
+    'b64decode', 'b64decode_str', 'b64encode', 'b64encode_str', 'hash', 'md5',
+    'sha1', 'sha256', 'sha512',
 
     # random
     'random_pw', 'random_sample', 'random_sentence', 'random_str', 'random_user',
@@ -118,9 +120,13 @@ __all__ = [
     'current_ip', 'current_ipv4', 'current_ipv6', 'free_port', 'get_ips_from_content',
     'get_ips_from_file', 'get_ips_from_lines', 'get_ips_from_str', 'get_networks_from_content', 'get_networks_from_file',
     'get_networks_from_lines', 'get_slash', 'get_slash_from_mask', 'in_ip_range', 'ip_only_re',
-    'ip_re', 'ip_to_seq', 'ip_tuple', 'is_comma_sep_ip', 'is_interface',
+    'ip_re', 'ip_relaxed_re', 'ip_to_seq', 'ip_tuple', 'is_comma_sep_ip', 'is_interface',
     'is_ip', 'is_ip_range', 'is_ipv4', 'is_network', 'log',
     'sort_ips', 'sortips', 'unzpad', 'zpad',
+
+    # binary_data
+    'is_binary_string', 'is_binary', 'strings',
+
 ]
 
 def toolz_imports():
@@ -136,6 +142,7 @@ def toolz_imports():
             groupdicts(r'^(def (?P<name>.*?)\(|(?P<name>\w[\d\w_]*) = )'),
             map(get('name')),
             filter(lambda n: not n.startswith('_')),
+            filter(lambda n: n != 'log'),
             sorted,
         )
     def grid(names):

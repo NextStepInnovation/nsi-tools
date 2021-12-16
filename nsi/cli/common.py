@@ -81,6 +81,23 @@ input_options = _.compose(
     ),
 )
 
+impacket_input_options = _.compose(
+    input_options,
+    click.option(
+        '-s', '--sam-path',
+        help=(
+            'Path of either a file with some number of SAM dumps'
+            ' with NTLM hashes or a directory to walk to find the same.'
+            ' If the -i/--ippath or -t/--target arguments are given, then'
+            ' all NTLM user/hash combinations will be used with all IPs'
+            ' provided.  If not, then the IP'
+            ' address **must be** in the name of the SAM file or the parent'
+            ' directory name of the file.'
+        ),
+        type=click.Path(exists=True, ),
+    ),
+)
+
 def get_content(inpath, clipboard=False):
     if inpath:
         content = Path(inpath).read_text()
@@ -146,5 +163,13 @@ cred_options = _.compose(
     click.option(
         '-d', '--domain',
         help=('Domain to use when authenticating (default: ".")'),
+    ),
+)
+
+impacket_cred_options = _.compose(
+    cred_options,
+    click.option(
+        '-h', '--hashes',
+        help=('NTLM hash with which to authenticate.'),
     ),
 )

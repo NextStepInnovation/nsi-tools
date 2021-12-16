@@ -8,10 +8,11 @@ from typing import *
 from pymaybe import Nothing
 import chardet
 from toolz.functoolz import compose_left
+from binaryornot.check import is_binary_string
 
 from .common import (
     pipe, call, concatv, vmapcat, curry, map, filter,
-    new_log, splitlines
+    new_log, splitlines,
 )
 from .time import ctime, dt_ctime
 
@@ -22,42 +23,6 @@ log = new_log(__name__)
 # File operations
 #
 # ----------------------------------------------------------------------
-
-def walk(path):
-    '''Return os.walk(path) as sequence of Path objects
-
-    >>> with tempfile.TemporaryDirectory() as temp:
-    ...     root = Path(temp)
-    ...     Path(root, 'a', 'b').mkdir(parents=True)
-    ...     _ = Path(root, 'a', 'a.txt').write_text('')
-    ...     _ = Path(root, 'a', 'b', 'b.txt').write_text('')
-    ...     paths = tuple(walk(root))
-    >>> paths == (Path(root, 'a', 'a.txt').resolve(), Path(root, 'a', 'b', 'b.txt').resolve())  # noqa
-    True
-
-    '''
-    return pipe(
-        os.walk(Path(path).expanduser().resolve()),
-        vmapcat(lambda root, dirs, files: [Path(root, f) for f in files]),
-    )
-
-@curry
-def walkmap(func, root):
-    '''Map function over all paths in os.walk(root)
-
-    >>> with tempfile.TemporaryDirectory() as temp:
-    ...     root = Path(temp)
-    ...     Path(root, 'a', 'b').mkdir(parents=True)
-    ...     _ = Path(root, 'a', 'a.txt').write_text('hello')
-    ...     _ = Path(root, 'a', 'b', 'b.txt').write_text('world')
-    ...     _ = pipe(root, walkmap(lambda p: print(p.read_text())), tuple)
-    hello
-    world
-    '''
-    return pipe(
-        walk(root),
-        map(func),
-    )
 
 def check_parents_for_file(name, start_dir=Path('.'), *, default=Nothing()):
     start_path = Path(start_dir).expanduser()
@@ -150,6 +115,46 @@ def ensure_paths(func, *, expanduser: bool=True):
     return path_arg_converter
 
 @ensure_paths
+def walk(path: Path):
+    '''Return os.walk(path) as sequence of Path objects
+
+    >>> with tempfile.TemporaryDirectory() as temp:
+    ...     root = Path(temp)
+    ...     Path(root, 'a', 'b').mkdir(parents=True)
+    ...     _ = Path(root, 'a', 'a.txt').write_text('')
+    ...     _ = Path(root, 'a', 'b', 'b.txt').write_text('')
+    ...     paths = tuple(walk(root))
+    >>> paths == (Path(root, 'a', 'a.txt').resolve(), Path(root, 'a', 'b', 'b.txt').resolve())  # noqa
+    True
+
+    '''
+    if path.is_file():
+        return [path.resolve()]
+    return pipe(
+        os.walk(path.resolve()),
+        vmapcat(lambda root, dirs, files: [Path(root, f) for f in files]),
+    )
+
+@curry
+def walkmap(func, root):
+    '''Map function over all paths in os.walk(root)
+
+    >>> with tempfile.TemporaryDirectory() as temp:
+    ...     root = Path(temp)
+    ...     Path(root, 'a', 'b').mkdir(parents=True)
+    ...     _ = Path(root, 'a', 'a.txt').write_text('hello')
+    ...     _ = Path(root, 'a', 'b', 'b.txt').write_text('world')
+    ...     _ = pipe(root, walkmap(lambda p: print(p.read_text())), tuple)
+    hello
+    world
+    '''
+    return pipe(
+        walk(root),
+        map(func),
+    )
+
+
+@ensure_paths
 def read_text(path: Union[str, Path]):
     '''Read contents of file as str
 
@@ -171,7 +176,15 @@ def read_text(path: Union[str, Path]):
         log.debug(f'read_text: chardet result {result}')
         if result['confidence'] > 0.8:
             encoding = result['encoding']
-    return path.read_text(encoding)
+    try:
+        return path.read_text(encoding)
+    except UnicodeDecodeError as unicode_err:
+        log.exception(
+            f'Tried to decode {repr(test_bytes[:20])} from'
+            f' {path} using {encoding} encoding.  Giving up.'
+        )
+        return ''
+    
 slurp = read_text    
 slurplines = compose_left(slurp, splitlines)
 
@@ -194,10 +207,11 @@ def read_bytes(path: Union[str, Path]):
 slurpb = read_bytes
 slurpblines = compose_left(slurp, splitlines)
 
+
 @curry
 @ensure_paths
-def peek(nbytes: int, path: Path):
-    with path.open('r', encoding='latin-1') as rfp:
+def binpeek(nbytes: int, path: Path):
+    with path.open('rb') as rfp:
         return rfp.read(nbytes)
 
 @ensure_paths

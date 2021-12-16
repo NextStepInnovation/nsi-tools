@@ -6,7 +6,6 @@ import typing as T
 from . import shell
 from .toolz import *
 from . import logging
-# from .config import site_config
 
 log = logging.new_log(__name__)
 
@@ -36,6 +35,8 @@ def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None,
         if hashes else
         f"{secretsdump_exec} {options} '{user}:{password}@{ip}'"
     )
+
+    log.info(f'secretsdump command: {command}')
 
     return getoutput(command)
     

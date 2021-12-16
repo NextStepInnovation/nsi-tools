@@ -1,5 +1,3 @@
-import logging
-
 import coloredlogs
 from .toolz import merge, new_log   # noqa
 

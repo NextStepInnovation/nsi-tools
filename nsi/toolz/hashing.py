@@ -1,10 +1,13 @@
 from pathlib import Path
 import hashlib
 import base64
-from typing import Union
+from collections.abc import Callable as Function
+from typing import Union, Callable
+
+from multipledispatch import dispatch
 
 from .common import (
-    curry, pipe,
+    curry, is_str, pipe,
     to_bytes, to_str, compose_left, 
 )
 
@@ -35,4 +38,20 @@ def hash(path: Union[str, Path], hash_func=hashlib.sha256):
         for chunk in iter(lambda: rfp.read(4096), b''):
             hash_obj.update(chunk)
     return hash_obj.hexdigest()
+
+def hash_content(hasher: Callable):
+    def do_hash(content: Union[str, bytes]):
+        if is_str(content):
+            content = content.encode()
+        return pipe(
+            content,
+            hasher,
+            lambda h: h.hexdigest(),
+        )
+    return do_hash
+
+md5 = hash_content(hashlib.md5)
+sha1 = hash_content(hashlib.sha1)
+sha256 = hash_content(hashlib.sha256)
+sha512 = hash_content(hashlib.sha512)
 

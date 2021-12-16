@@ -12,7 +12,9 @@ import importlib
 import multipledispatch
 from typing import *
 
-from pymaybe import maybe, Nothing
+from pymaybe import maybe as _maybe, Nothing
+
+maybe = _maybe
 
 try:
     from cytoolz.curried import *
@@ -38,7 +40,7 @@ log = new_log(__name__)
 def log_lines(log_function, lines):
     return pipe(
         lines,
-        mapcat(lambda line: line.splitlines()),
+        mapcat(splitlines),
         filter(None),
         mapdo(log_function),
     )
@@ -433,6 +435,20 @@ def vkeymap(func, d, **kw):
 
 concat_t = compose_left(concat, tuple)
 concatv_t = compose_left(concatv, tuple)
+
+def cconcat(start_iterable: Iterable):
+    '''Curried concat
+    '''
+    def curried_concat(end_iterable: Iterable):
+        return concat([start_iterable, end_iterable])
+    return curried_concat
+
+def cconcatv(start_iterable: Iterable):
+    '''Curried concatv
+    '''
+    def curried_concatv(end_iterable: Iterable):
+        return concatv(start_iterable, end_iterable)
+    return curried_concatv
 
 @curry
 def select(keys, iterable):

@@ -3,32 +3,12 @@ import tempfile
 from pathlib import Path, PurePosixPath
 import logging
 
-from requests.auth import HTTPBasicAuth
 from webdav.client import Client
 
-from .config import with_config
 from .toolz import *
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
-
-URL = 'https://share.nextstepinnovation.com/'
-
-
-@with_config
-def get_nsi_client(config):
-    return Client({
-        'webdav_hostname':
-        URL,
-        'webdav_root':
-        '/nextcloud/remote.php/webdav/',
-        'webdav_auth':
-        HTTPBasicAuth(
-            config['webdav']['username'],
-            config['webdav']['password'],
-        ),
-    })
-
 
 class DavPath:
     def __init__(self, *parts):

@@ -31,6 +31,7 @@ setup(
         'click',
         'coloredlogs',
         'ifcfg',
+        'impacket',
         'jinja2',
         'jmespath',
         'lxml',
@@ -116,6 +117,8 @@ setup(
             'bloodhound_list_groups',
             'nsi-whois=nsi.cli.whois:whois_ips',
             'nsi-ftp=nsi.cli.ftp:main',
+            'nsi-secretsdump=nsi.cli.secretsdump:dump',
+            'nsi-ntlm-extract=nsi.cli.ntlm:extract',
         ],
     },
 )
