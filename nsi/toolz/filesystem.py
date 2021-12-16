@@ -8,7 +8,6 @@ from typing import *
 from pymaybe import Nothing
 import chardet
 from toolz.functoolz import compose_left
-from binaryornot.check import is_binary_string
 
 from .common import (
     pipe, call, concatv, vmapcat, curry, map, filter,
