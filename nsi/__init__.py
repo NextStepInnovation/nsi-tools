@@ -17,5 +17,6 @@ from . import (
     data, 
     ntlm, 
     secretsdump,
+    excel,
 )
 __version__ = '0.0.1'

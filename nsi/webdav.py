@@ -11,6 +11,8 @@ log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
 class DavPath:
+    client_function = None
+
     def __init__(self, *parts):
         if isinstance(parts[0], DavPath):
             self.parts = parts[0].parts
@@ -18,7 +20,7 @@ class DavPath:
             self.parts = parts
 
     def __call__(self, *parts):
-        return DavPath(*(self.parts + parts))
+        return self.__class__(*(self.parts + parts))
 
     def __repr__(self):
         return f'DavPath: {self.path}'
@@ -52,9 +54,13 @@ class DavPath:
                     'size': maybe_float(info['size']),
                 }))
 
+    _client = None
     @property
     def client(self):
-        return get_nsi_client()
+        if self._client is None:
+            print(self.__class__.client_function)
+            self._client = self.__class__.client_function()
+        return self._client
 
     @property
     def path_obj(self):
@@ -70,7 +76,7 @@ class DavPath:
 
     def ls(self):
         return pipe(
-            get_nsi_client().list(self.path),
+            self.client.list(self.path),
             map(self),
             tuple,
         )
@@ -115,12 +121,12 @@ def increment_file_version(path: DavPath):
     if not version_re.search(path.path):
         log.error(f'DavPath {path} has no version. Adding v0.0')
         stem, ext = path.path_obj.stem, path.path_obj.suffix
-        return DavPath(*concatv(path.parent.parts, [f'{stem}-v0.0{ext}']))
+        return path.__class__(*concatv(path.parent.parts, [f'{stem}-v0.0{ext}']))
 
     major, minor = path.version
     stem = version_re.sub(f'v{major}.{minor + 1}', path.path_obj.stem)
     ext = path.path_obj.suffix
-    return DavPath(*concatv(path.parent.parts, [f'{stem}{ext}']))
+    return path.__class__(*concatv(path.parent.parts, [f'{stem}{ext}']))
 
 
 @curry
@@ -130,6 +136,7 @@ def copy(client: Client, from_path: DavPath, to_path: DavPath):
 
 @curry
 def download(client: Client, from_path: DavPath, to_path: Path):
+    print(client)
     return client.download(from_path.path, str(to_path))
 
 
@@ -191,7 +198,7 @@ def glob(client: Client, from_path: DavPath, glob_str: str):
 @curry
 def ls(client: Client, path: DavPath):
     return pipe(
-        get_nsi_client().list(path.path),
+        client.list(path.path),
         map(path),
         tuple,
     )

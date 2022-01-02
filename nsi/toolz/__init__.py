@@ -53,14 +53,15 @@ __all__ = [
     'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines',
 
     # filesystem
-    'POS_PARAM_KINDS', 'backup_path', 'check_parents_for_file', 'ensure_paths', 
+    'POS_PARAM_KINDS', 'backup_path', 'check_parents_for_file', 
+    'ensure_paths', 'ensure_paths_curry',
     'is_path', 'newer', 'older', 'binpeek', 'read_text', 'read_bytes',
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'to_paths', 'walk', 'walkmap',
 
     # common
     'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 'cconcatv',
     'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 'do_error',
-    'do_info', 'do_log', 'error_raise', 'filter_t', 'find', 'first_true',
+    'do_info', 'do_log', 'do_slice', 'error_raise', 'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'function_from_path', 'get_t', 'help_text',
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
@@ -82,7 +83,7 @@ __all__ = [
 
     # csv
     'csv_rows', 'csv_rows_from_content', 'csv_rows_from_fp', 'csv_rows_from_path', 'csv_rows_to_content',
-    'csv_rows_to_fp', 'csv_rows_to_path', 'log',
+    'csv_rows_to_fp', 'csv_rows_to_path', 
 
     # html
     'soup',
@@ -121,7 +122,7 @@ __all__ = [
     'get_ips_from_file', 'get_ips_from_lines', 'get_ips_from_str', 'get_networks_from_content', 'get_networks_from_file',
     'get_networks_from_lines', 'get_slash', 'get_slash_from_mask', 'in_ip_range', 'ip_only_re',
     'ip_re', 'ip_relaxed_re', 'ip_to_seq', 'ip_tuple', 'is_comma_sep_ip', 'is_interface',
-    'is_ip', 'is_ip_range', 'is_ipv4', 'is_network', 'log',
+    'is_ip', 'is_ip_range', 'is_ipv4', 'is_network', 
     'sort_ips', 'sortips', 'unzpad', 'zpad',
 
     # binary_data

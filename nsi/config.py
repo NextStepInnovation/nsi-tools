@@ -176,60 +176,60 @@ def config_provider(loader: T.Callable, verifier: T.Callable):
         return wrapper
     return with_config
 
-def _reset_cache(func, path):
-    func._reset = True
-    log.info(f'Cached file ({path}) for {func} ready for reset')
-
 def younger_than(delta, path):
     return datetime.now() - dt_ctime(path) < delta
 
-@curry
-def from_cache(saver, loader, path):
-    def decorator(func):
-        func._reset = False
-        func.reset_cache = partial(_reset_cache, func, path)
+# def _reset_cache(func, path):
+#     func._reset = True
+#     log.info(f'Cached file ({path}) for {func} ready for reset')
+
+# @curry
+# def from_cache(saver, loader, path):
+#     def decorator(func):
+#         func._reset = False
+#         func.reset_cache = partial(_reset_cache, func, path)
         
-        @with_config
-        @functools.wraps(func)
-        def wrapper(config, *a, **kw):
-            cache_path = Path(config['cache_dir'], path)
-            if (cache_path.exists()
-                and
-                younger_than(timedelta(days=1), cache_path)
-                and
-                not func._reset):
-                value = loader(cache_path)
-                return value
-            value = func(*a, **kw)
-            saver(cache_path, value)
-            func._reset = False
-            return value
-        return wrapper
+#         @with_config
+#         @functools.wraps(func)
+#         def wrapper(config, *a, **kw):
+#             cache_path = Path(config['cache_dir'], path)
+#             if (cache_path.exists()
+#                 and
+#                 younger_than(timedelta(days=1), cache_path)
+#                 and
+#                 not func._reset):
+#                 value = loader(cache_path)
+#                 return value
+#             value = func(*a, **kw)
+#             saver(cache_path, value)
+#             func._reset = False
+#             return value
+#         return wrapper
 
-    return decorator
+#     return decorator
 
-def xlsx_saver(path, wb):
-    wb.save(str(path))
+# def xlsx_saver(path, wb):
+#     wb.save(str(path))
 
-def xlsx_loader(path):
-    import openpyxl
-    return openpyxl.load_workbook(str(path))
+# def xlsx_loader(path):
+#     import openpyxl
+#     return openpyxl.load_workbook(str(path))
 
-from_xlsx_cache = from_cache(xlsx_saver, xlsx_loader)
+# from_xlsx_cache = from_cache(xlsx_saver, xlsx_loader)
 
-def str_saver(path, content):
-    Path(path).write_text(content)
+# def str_saver(path, content):
+#     Path(path).write_text(content)
 
-def str_loader(path):
-    return Path(path).read_text()
+# def str_loader(path):
+#     return Path(path).read_text()
 
-from_str_cache = from_cache(str_saver, str_loader)
+# from_str_cache = from_cache(str_saver, str_loader)
 
-def binary_saver(path, content):
-    Path(path).write_binary(content)
+# def binary_saver(path, content):
+#     Path(path).write_binary(content)
 
-def binary_loader(path):
-    return Path(path).read_binary()
+# def binary_loader(path):
+#     return Path(path).read_binary()
 
-from_binary_cache = from_cache(binary_saver, binary_loader)
+# from_binary_cache = from_cache(binary_saver, binary_loader)
 

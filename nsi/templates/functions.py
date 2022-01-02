@@ -40,12 +40,14 @@ jpeg = figure_function('jpeg', images.jpeg_bytes)
 def table(data):
     return get_env().get_template('table.html.j2').render(data=data)
 
+@curry
 def add_functions(env: jinja2.Environment, **funcs):
     env.globals.update(funcs)
     return env
 
+@curry
 def nsi_functions(env: jinja2.Environment, **funcs):
-    return add_functions(**merge(
+    return add_functions(env, **merge(
         {
             'png': png,
             'jpeg': jpeg,

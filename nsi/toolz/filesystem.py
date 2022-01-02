@@ -7,7 +7,7 @@ from typing import *
 
 from pymaybe import Nothing
 import chardet
-from toolz.functoolz import compose_left
+from toolz.functoolz import compose_left, compose
 
 from .common import (
     pipe, call, concatv, vmapcat, curry, map, filter,
@@ -113,6 +113,11 @@ def ensure_paths(func, *, expanduser: bool=True):
         return func(*a, **kw)
     return path_arg_converter
 
+ensure_paths_curry = compose(
+    curry,
+    ensure_paths,
+)
+
 @ensure_paths
 def walk(path: Path):
     '''Return os.walk(path) as sequence of Path objects
@@ -170,11 +175,13 @@ def read_text(path: Union[str, Path]):
     '''
     encoding = 'utf-8'
     with path.open('rb') as rfp:
-        test_bytes = rfp.read(100)
+        test_bytes = rfp.read(1024)
         result = chardet.detect(test_bytes)
         log.debug(f'read_text: chardet result {result}')
         if result['confidence'] > 0.8:
             encoding = result['encoding']
+    if encoding == 'ascii':
+        encoding = 'utf-8'
     try:
         return path.read_text(encoding)
     except UnicodeDecodeError as unicode_err:

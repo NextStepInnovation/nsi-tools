@@ -13,6 +13,7 @@ import multipledispatch
 from typing import *
 
 from pymaybe import maybe as _maybe, Nothing
+import chardet
 
 maybe = _maybe
 
@@ -179,12 +180,31 @@ def is_str(v):
     return isinstance(v, str)
 is_not_string = complement(is_str)
 
-def to_str(content, encoding='utf-8', errors='ignore'):
+@curry
+def decode_bytes(data: bytes):
+    encoding = 'utf-8'
+    result = chardet.detect(data[:1024])
+    log.debug(f'decode_bytes: chardet result {result}')
+    if result['confidence'] > 0.8:
+        encoding = result['encoding']
+    try:
+        return data.decode(encoding)
+    except UnicodeDecodeError as unicode_err:
+        log.exception(
+            f'Tried to decode {repr(data[:50])} using {encoding} '
+            'encoding.  Giving up.'
+        )
+        return ''
+
+def to_str(content: Any):
     '''Convert this object into a string, decoding from bytes if necessary
     '''
     match type(content):
         case builtins.bytes:
-            return content.decode(encoding, errors)
+            return pipe(
+                content,
+                decode_bytes,
+            )
     return str(content)
 
 def to_bytes(content, encoding='utf-8', errors='ignore'):
@@ -285,9 +305,9 @@ def help_text(s):
     return textwrap.shorten(s, 1e300)
 
 @curry
-def wrap_text(width, text):
+def wrap_text(width, text, **wrap_kw):
     return pipe(
-        textwrap.wrap(text, width),
+        textwrap.wrap(text, width, **wrap_kw),
         '\n'.join,
     )
 
@@ -313,6 +333,11 @@ def lower(value: str):
 def upper(value: str):
     'In-line string upper function'
     return value.upper()
+
+def do_slice(start: int, stop: int = None, step: int = None):
+    def slicer(value: str):
+        return value[start:stop:step]
+    return slicer
 
 @curry
 def replace(old: str, new: str, value: str, count: int = -1):
@@ -845,6 +870,9 @@ def sort_by(func, iterable, **kw):
     >>> pipe([{'a': 1}, {'a': 8}, {'a': 2}], sort_by(get('a')))
     [{'a': 1}, {'a': 2}, {'a': 8}]
     '''
+    if is_str(func) or is_int(func):
+        func = get(func)
+
     return builtins.sorted(iterable, key=func, **kw)
 
 def cat_to_set(iterable):

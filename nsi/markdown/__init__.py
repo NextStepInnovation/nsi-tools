@@ -1,3 +1,6 @@
+from pathlib import Path
+import typing as T
+
 import markdown as _markdown
 
 from . import (
@@ -9,25 +12,34 @@ from .. import logging
 log = logging.new_log(__name__)
 
 @curry
-def markdown(content: str, **kwargs):
+def markdown(content: str, *, extensions: T.Sequence[str] = None, 
+             extension_configs: T.Dict[str, dict] = None,
+             base_path: T.Union[str, Path] = '.'):
     class HtmlWithMeta(str):
         meta = None
 
     md = _markdown.Markdown(
-        extensions=pipe(
+        extensions = pipe(
             concatv(
                 ['nsi.markdown.meta_yaml',
                  'nsi.markdown.yaml_data',
                  'nsi.markdown.card',
+                 'nsi.markdown.image_fig',
                  'nsi.markdown.table'],
-                ['extra', 'codehilite', 'toc', 'admonition'],
-                kwargs.get('extensions', []),
+                [
+                    'extra', 
+                    'codehilite', 
+                    'toc', 
+                    'admonition',
+                    'pymdownx.b64'
+                ],
+                extensions or [],
             ),
             set,
             tuple,
         ),
             
-        extension_configs=merge(
+        extension_configs = merge(
             {
                 'extra': {},
                 'admonition': {
@@ -36,8 +48,11 @@ def markdown(content: str, **kwargs):
                     'noclasses': True,
                     'guess_lang': False,
                 },
+                'pymdownx.b64': {
+                    'base_path': base_path,
+                },
             },
-            kwargs.get('extension_configs', {}),
+            extension_configs or {},
         ),
     )
 

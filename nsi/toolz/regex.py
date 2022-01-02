@@ -1,3 +1,4 @@
+from collections import abc
 from typing import Union, Sequence, Iterable, Callable, Any
 
 import re as _re
@@ -117,8 +118,12 @@ def grep(raw_regex: Regex, iterable: Iterable[Union[str, Sequence, dict]],
     ({'a': 'abc'}, {'a': 'aec'})
 
     '''
-    regex = re.compile(raw_regex, **re_kw)
-    get = _get(get) if get else noop
+    if isinstance(raw_regex, _re.Pattern):
+        regex = raw_regex
+    else:
+        regex = re.compile(raw_regex, **re_kw)
+    if not callable(get):
+        get = _get(get) if get else noop
     search = compose_left(
         get,
         regex.search,

@@ -3,18 +3,22 @@ import calendar
 import jinja2
 
 from ..toolz import *
+from .. import logging
 from .. import markdown
+
+log = logging.new_log(__name__)
 
 def pluralize(number, singular='', plural='s'):
     if number == 1:
         return singular
     return plural
 
-def md_to_html(text):
-    return markdown.markdown(text)
+@curry
+def md_to_html(text, **md_kwargs):
+    return markdown.markdown(text or '', **md_kwargs)
 
 def long_date(text):
-    return maybe_dt(text).stftime('%B %d, %Y') or log.error(
+    return maybe_dt(text).strftime('%B %d, %Y') or log.error(
         f'Could not parse datetime: "{repr(text)}"'
     )
 
@@ -34,12 +38,14 @@ def month(text):
         lambda m: calendar.month_name[m],
     )
 
+@curry
 def add_filters(env: jinja2.Environment, **filters):
     env.filters.update(filters)
     return env
 
+@curry
 def nsi_filters(env: jinja2.Environment, **filters):
-    return add_filters(**merge(
+    return add_filters(env, **merge(
         {
             'pluralize': pluralize,
             'md_to_html': md_to_html,

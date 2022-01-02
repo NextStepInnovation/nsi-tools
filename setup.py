@@ -42,6 +42,7 @@ setup(
         'paramiko',
         'pillow',
         'pymaybe',
+        'pymdown-extensions',
         'pyperclip',
         'pyrsistent',
         'python-dateutil',
