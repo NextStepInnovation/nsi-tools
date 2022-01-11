@@ -93,6 +93,13 @@ def mini_tb(levels=3):
 #
 # ----------------------------------------------------------------------
 
+@curry
+def ceval(source, globals=None, locals=None):
+    '''Curried eval
+    '''
+    return eval(source, globals, locals)
+
+
 def noop(value):
     '''Yes, we have no banana pudding.
 
