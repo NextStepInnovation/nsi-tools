@@ -85,12 +85,14 @@ smb_error_re = re.compile(
     # r'NT_(?P<raw_error>.*?)\s+'
 )
 
-def smb_output_line_dict(line):
+@curry
+def smb_output_line_dict(path: str, command: str, line):
     file_match = smb_file_re.search(line)
     if file_match:
         d = file_match.groupdict()
         return merge(
             d,
+            {'path': path, 'command': command},
             {'dt': _.maybe_dt(d['ts'])},
             {'size': int(d['size'])},
             {'type': smb_file_type_map[d['type']]},
@@ -100,6 +102,7 @@ def smb_output_line_dict(line):
         d = error_match.groupdict()
         return merge(
             d,
+            {'path': path, 'command': command},
             {'error': smb_error_type_map.get(
                 d['raw_error'], set(),
             )},
@@ -137,7 +140,7 @@ def smbclient_ls(domain, username, password, target, share, *path_parts,
     return pipe(
         smbclient(domain, username, password, target, share, command,
                   getoutput=getoutput, timeout=timeout).splitlines(),
-        map(smb_output_line_dict),
+        map(smb_output_line_dict(path, command)),
         filter(None),
         tuple,
     )
@@ -155,7 +158,7 @@ def smbclient_mkdir(domain, username, password, target, share,
     errors = _.maybe_pipe(
         smbclient(domain, username, password, target, share, command,
                   getoutput=getoutput, timeout=timeout).splitlines(),
-        map(smb_output_line_dict),
+        map(smb_output_line_dict(path, command)),
         filter(None),
         smb_errors,
     )
@@ -183,7 +186,7 @@ def smbclient_rmdir(domain, username, password, target, share,
     errors = _.maybe_pipe(
         smbclient(domain, username, password, target, share, command,
                   getoutput=getoutput, timeout=timeout).splitlines(),
-        map(smb_output_line_dict),
+        map(smb_output_line_dict(path, command)),
         filter(None),
         smb_errors,
     )

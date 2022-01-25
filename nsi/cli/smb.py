@@ -239,11 +239,22 @@ def smb_ls(host, path, share, username, password, domain, ssh, max_workers,
         parts = []
 
     def format_file(d):
-        print(d)
-        ts = d['dt'].strftime('%Y-%m-%dT%H%M%S') if 'dt' in d else ''
-        return (
-            f"{ts}\t{d['name']}\t{d['type']}\t{d['size']}"
-        )
+        {'raw_error': 'STATUS_ACCESS_DENIED', 'error': {'no_access'}, 'error_line': 'session setup failed: NT_STATUS_ACCESS_DENIED'}
+        match d:
+            case {'name': name, 'type': type, 'size': size, 'dt': dt}:
+                ts = dt.strftime('%Y-%m-%dT%H%M%S')
+                return (
+                    f"{ts}\t{name}\t{type}\t{size}"
+                )
+            case {'error': error, 'path': path} if 'no_access' in error:
+                return (
+                    f'ERROR: no access to {path}'
+                )
+            case {'raw_error': raw_error, 'error': errors, 'error_line': line}:
+                return (
+                    f'ERROR: {raw_error} --> {line}'
+                )
+        return ''
     
     _.pipe(
         smb.session.smbclient_ls(
@@ -251,6 +262,7 @@ def smb_ls(host, path, share, username, password, domain, ssh, max_workers,
             getoutput=getoutput, 
         ),
         _.map(format_file),
+        _.filter(None),
         '\n'.join,
         print,
     )
