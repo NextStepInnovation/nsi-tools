@@ -5,7 +5,7 @@ import requests
 import jmespath
 from pymaybe import Nothing
 
-from .common import curry, is_none, new_log, map, filter, pipe
+from .common import curry, is_none, new_log, pipe, to_bytes
 
 log = new_log(__name__)
 
@@ -24,8 +24,16 @@ def maybe_json(response: requests.Response, *, default=Nothing()):
 
 @curry
 @functools.wraps(json.dumps)
-def json_dumps(*a, **kw):
-    return json.dumps(*a, **kw)
+def json_dumps(obj, **kw):
+    return json.dumps(obj, **kw)
+
+@curry
+@functools.wraps(json.dumps)
+def json_dumpb(obj, **kw):
+    return pipe(
+        json_dumps(obj, **kw),
+        to_bytes,
+    )
 
 @curry
 @functools.wraps(json.loads)

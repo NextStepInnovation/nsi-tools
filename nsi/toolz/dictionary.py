@@ -1,12 +1,14 @@
 import json
+import hashlib
 from typing import (
-    Hashable, Iterable,
+    Hashable, Iterable, Any, Iterable
 )
 
 from .common import (
-    pipe, merge, curry, assoc, dissoc, vmap, get,
+    pipe, merge, curry, assoc, assoc_in, dissoc, vmap, get,
     to_bytes, is_seq, is_dict, map, filter,
 )
+from .json import json_dumpb
 from .pyrsistent import no_pyrsistent
 
 # ----------------------------------------------------------------------
@@ -27,10 +29,12 @@ def dict_hash(hash_func, d):
     '''
     return pipe(
         no_pyrsistent(d),
-        lambda d: json.dumps(d, sort_keys=True),
-        to_bytes,
+        json_dumpb(sort_keys=True),
         lambda b: hash_func(b).hexdigest(),
     )
+dict_md5 = dict_hash(hashlib.md5)
+dict_sha1 = dict_hash(hashlib.sha1)
+dict_sha256 = dict_hash(hashlib.sha256)
 
 
 def cmerge(*dicts):
@@ -48,6 +52,58 @@ def cmerge(*dicts):
         '''
         return merge(*(dicts + more_dicts))
     return do_merge
+
+@curry
+def cassoc(key: Hashable, value: Any, d: dict, factory=dict):
+    '''Curried assoc
+
+    Args:
+      key (Hashable): key to be updated
+    
+      value (Any): value for the key
+
+      d (dict): dictionary to transform (with no side effects)
+
+    Returns: (dict) new state of dictionary
+
+    Examples:
+
+    >>> new = pipe({'b': 2}, cassoc('a', 5))
+    >>> new == {'a': 5, 'b': 2}
+    True
+
+    '''
+    return assoc(d, key, value, factory)
+set_key = cassoc
+
+@curry
+def cassoc_in(keys: Iterable[Hashable], value: Any, d: dict, factory=dict):
+    '''Curried assoc_in
+
+    Args:
+      keys (Iterable[Hashable]): key chain to be updated
+    
+      value (Any): value for the key chain
+
+      d (dict): dictionary to transform (with no side effects)
+
+    Returns: (dict) new state of dictionary
+
+    Examples:
+
+    >>> purchase = {'name': 'Alice',
+    ...             'order': {'items': ['Apple', 'Orange'],
+    ...                       'costs': [0.50, 1.25]},
+    ...             'credit card': '5555-1234-1234-1234'}
+    >>> new = pipe(purchase, cassoc_in(['order', 'costs'], [0.25, 1.00]))
+    >>> new == {'credit card': '5555-1234-1234-1234',
+    ...         'name': 'Alice',
+    ...         'order': {'costs': [0.25, 1.00], 
+    ...                   'items': ['Apple', 'Orange']}}
+    True
+     
+    '''
+    return assoc_in(d, keys, value, factory)
 
 @curry
 def create_key(key: Hashable, value_function, d):
@@ -102,6 +158,11 @@ def update_key(key: Hashable, value_function, d):
     True
 
     '''
+    if callable(value_function):
+        value = value_function(d)
+    else:
+        value = value_function
+        
     return assoc(d, key, value_function(d))
 
 @curry
@@ -177,29 +238,7 @@ def update_if_key_exists(key: Hashable, value_function, d):
     return d
 
 @curry
-def set_key(key: Hashable, value, d):
-    '''Curried assoc
-
-    Args:
-      key (Hashable): key to be updated
-    
-      value (Any): value for the key
-
-      d (dict): dictionary to transform (with no side effects)
-
-    Returns: (dict) new state of dictionary
-
-    Examples:
-
-    >>> new = pipe({'b': 2}, set_key('a', 5))
-    >>> new == {'a': 5, 'b': 2}
-    True
-
-    '''
-    return assoc(d, key, value)
-
-@curry
-def drop_key(key: Hashable, d):
+def cdissoc(key: Hashable, d):
     ''' Curried dissoc
 
     Args:
@@ -218,7 +257,8 @@ def drop_key(key: Hashable, d):
     
     '''
     return dissoc(d, key)
-remove_key = drop_key
+drop_key = cdissoc
+remove_key = cdissoc
 
 @curry
 def drop_keys(keys: Iterable[Hashable], d):

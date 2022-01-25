@@ -61,9 +61,12 @@ def xlsx_to_clipboard(content: str):
     )
 
 def escape_row(row: Iterable[str]):
+    '''Prepare individual row for pasting as an Excel column
+    '''
     return pipe(
         row,
         map(lambda v: v.replace('"', '""')),
+        map(lambda v: f'"{v}"'),
         '\t'.join,
     )
 

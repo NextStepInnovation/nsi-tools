@@ -82,3 +82,56 @@ def bloodhound_list_groups(inpath, outpath, ssh, echo, from_clipboard,
         to_clipboard, csv, user, keep_duplicates,
         get('groups'),
     )
+
+@click.command()
+@click.argument('group-regex')
+@click.option(
+    '-i', '--inpath', type=click.Path(exists=True),
+    default='./bloodhound',
+)
+@click.option('-T', '--table', is_flag=True, help='Output to markdown table')
+@click.option(
+    '-R', '--recurse', is_flag=True, help=(
+        'Recurse through groups to build a unique list of users or computers'
+    ),
+)
+@click.option(
+    '--loglevel', default='info',
+    help=('Log output level (default: info)'),
+)
+def group_members(group_regex, inpath, table, recurse, loglevel):
+    logging.setup_logging(loglevel)
+
+    inpath = Path(inpath).expanduser()
+    log.info(
+        f'Searching for group members in {inpath}'
+    )
+
+    lut = bloodhound.parser.group_search(
+        inpath, group_regex, recurse=recurse,
+    )
+
+    log.info(
+        f'Found {len(lut)} matching group regex "{group_regex}"'
+    )
+
+    get_name = bloodhound.parser.get_name
+    formatter = curry(
+        (lambda g, n: f'| {g} | {get_name(n)} | {n["type"]} |' )
+        if table else 
+        (lambda g, n: f'{g}\t{get_name(n)}\t{n["type"]}')
+    )
+
+    pipe(
+        lut.items(),
+        filter(second),
+        vmap(lambda g, nodes: pipe(
+            nodes,
+            sort_by(lambda n: (n['type'], get_name(n))),
+            map(formatter(g)),
+            '\n'.join,
+        )),
+        cconcat(['| Group Name | Member | Object Type |']) if table else noop,
+        '\n'.join,
+        print,
+    )

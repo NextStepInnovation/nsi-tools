@@ -627,8 +627,10 @@ def vdo(func, value):
     return do(vcall(func), value)
 
 @curry
-def do_log(logger, value, **kw):
-    logger(f'Value:\n{pprint.pformat(value)}', **kw)
+def do_log(logger, msg: Union[str, Callable], value: Any, **kw):
+    if callable(msg):
+        msg = msg(value)
+    logger(msg, **kw)
     return value
 do_info = compose_left(
     lambda logger: do_log(logger.info)

@@ -94,7 +94,7 @@ setup(
             'getsubnets=nsi.cli.ips:get_subnets',
             'zpad=nsi.cli.ips:zpad_ips',
             'unzpad=nsi.cli.ips:unzpad_ips',
-            'nsi-render=nsi.cli.text:render_templates'
+            'nsi-render=nsi.cli.text:render_templates',
             'nsi-secrets-crawl=nsi.secrets_crawl:secrets_crawl',
             'nsi-dump-hashes=nsi.cli.hashes:dump_hashes',
             'nsi-ntlm-resolve=nsi.cli.hashes:ntlm_resolve',
@@ -110,12 +110,10 @@ setup(
             'nsi-nmap=nsi.cli.nmap:nmap_hosts',
             'nsi-nmap-services=nsi.cli.nmap:nmap_services',
             'nsi-dns-resolve=nsi.cli.dns:dns_resolve',
-            'nsi-bh-list-computers=nsi.cli.bloodhound:'
-            'bloodhound_list_computers',
-            'nsi-bh-list-users=nsi.cli.bloodhound:'
-            'bloodhound_list_users',
-            'nsi-bh-list-groups=nsi.cli.bloodhound:'
-            'bloodhound_list_groups',
+            'nsi-bh-list-computers=nsi.cli.bloodhound:bloodhound_list_computers',
+            'nsi-bh-list-users=nsi.cli.bloodhound:bloodhound_list_users',
+            'nsi-bh-list-groups=nsi.cli.bloodhound:bloodhound_list_groups',
+            'nsi-bh-group-members=nsi.cli.bloodhound:group_members',
             'nsi-whois=nsi.cli.whois:whois_ips',
             'nsi-ftp=nsi.cli.ftp:main',
             'nsi-secretsdump=nsi.cli.secretsdump:dump',

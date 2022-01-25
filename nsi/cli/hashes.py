@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 
 from ..toolz import *
+from .. import ntlm
 
 
 @click.command()
@@ -38,14 +39,14 @@ def dump_hashes(inpath, sam, mscache):
             
     if sam or mscache:
         pipe(
-            ((get_sam_hashes(content) if sam else ()) +
-             (get_mscache_hashes(content) if mscache else ())),
+            ((ntlm.get_sam_hashes(content) if sam else ()) +
+             (ntlm.get_mscache_hashes(content) if mscache else ())),
             hash_content,
             print,
         )
     else:
         pipe(
-            get_sam_hashes(content),
+            ntlm.get_sam_hashes(content),
             hash_content,
             print,
         )
@@ -67,7 +68,14 @@ def dump_hashes(inpath, sam, mscache):
 )
 def ntlm_resolve(hashes, potfile, table):
     ntlm_re = re.compile(r'^[0-9a-f]{32}:.*')
-    u2h = dict(get_sam_hashes(Path(hashes).read_text()))
+    u2h = pipe(
+        hashes,
+        slurp,
+        ntlm.get_sam_hashes,
+        groupby('full_user'),
+        valmap(first),
+        valmap(get('hashes')),
+    )
     h2pt = pipe(
         Path(potfile).read_text().splitlines(),
         map(lambda l: l.strip()),
@@ -77,7 +85,7 @@ def ntlm_resolve(hashes, potfile, table):
     )
 
     def tr_f(u, h):
-        return f'|| `{u}` | `{h2pt[h]}` ||'
+        return f'| `{u}` | `{h2pt[h]}` |'
 
     row_formatter = tr_f if table else lambda u, h: f'{u}\t{h2pt[h]}'
 

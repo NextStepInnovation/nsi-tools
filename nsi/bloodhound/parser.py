@@ -26,16 +26,16 @@ def parse_json(path: Path):
         )
     )
 
-def get_name(d):
-    match d:
+def get_name(node: dict):
+    match node:
         case {'Name': name}:
             return name
         case {'Properties': {'name': name}}:
             return name
         case {'ObjectIdentifier': name}:
             return name
-    d_str = pprint.pformat(d)[:1000]
-    log.error(d_str)
+    d_str = pprint.pformat(node)[:100]
+    log.error(pprint.pformat(node))
     raise KeyError(f'No name for {d_str}')
 
 def get_id(d):
@@ -135,12 +135,12 @@ get_localadmins = get_members_from_key('LocalAdmins')
 def get_sessions(computer: T.Dict):
     pass
 
-def get_users(group):
-    for member in group.members:
-        if member.is_group:
-            yield from get_users(member)
-        elif member.is_user:
-            yield member
+# def get_users(group):
+#     for member in group['members:
+#         if member.is_group:
+#             yield from get_users(member)
+#         elif member.is_user:
+#             yield member
 
 def parse_root_path(path: Union[str, Path]):
     '''Parse the root data path, i.e. with timestamped subdirectories,
@@ -197,33 +197,58 @@ get_computer_names = compose_left(
     get_names,
 )
 
+@curry
 @ensure_paths
-def group_members(path: Path, group_name: str):
+def get_users(path: Path, node: dict, *, recurse: bool=False, level: int = 0):
     data = parse_directory(path)
+    match node:
+        case {'type': 'groups'} as group:
+            if not recurse and level > 0:
+                yield group
+            else:
+                yield from pipe(
+                    group['Members'],
+                    map(get_id),
+                    map(data['by_id'].get),
+                    filter(None),
+                    map(get_users(path, recurse=recurse, level=level + 1)),
+                    concat,
+                )
+        case {'type': 'computers'} as computer:
+            yield computer
+        case {'type': 'users'} as user:
+            yield user
+
+
+@curry
+@ensure_paths
+def group_members(path: Path, group_name: str, *, recurse: bool = False):
+    data = parse_directory(path)
+
     return pipe(
         data['by_name'][group_name],
-        get("Members"),
-        map(get_id),
-        map(data['by_id'].get),
+        get_users(path, recurse=recurse),
         filter(None),
+        unique(key=get_id),
         tuple,
+
     )
 
-group_member_names = compose_left(
-    group_members,
-    map(get_name),
-    tuple,
-)
-
+@curry
 @ensure_paths
-def group_search(path: Path, group_re: str):
+def group_search(path: Path, group_re: str, *, recurse=False):
     data = parse_directory(path)
-    group_re = re.compile(group_re, re.I)
-    return pipe(
+    groups = pipe(
         data['groups'],
         map(get_name),
-        filter(group_re.search),
-        map(lambda uname: (uname, group_members(path, uname))),
+        igrept(group_re),
+    )
+    return pipe(
+        groups,
+        map(lambda gname: (
+            gname, 
+            group_members(path, gname, recurse=recurse),
+        )),
         dict,
     )
 

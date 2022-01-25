@@ -71,6 +71,9 @@ def parse_sam_from_lines(lines: T.Iterable[str]):
     return pipe(
         lines,
         groupdicts(sam_re),
+        map(lambda d: merge(d, {
+            'full_user': f"{d.get('domain', '.') or '.'}/{d['user']}",
+        })),
     )
 
 parse_sam_from_content = compose_left(

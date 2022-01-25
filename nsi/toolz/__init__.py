@@ -42,7 +42,7 @@ __all__ = [
     'valfilter', 'valmap',
 
     # json
-    'jmes', 'json_dumps', 'json_loads', 'maybe_json',
+    'jmes', 'json_dumps', 'json_dumpb', 'json_loads', 'maybe_json',
 
     # http
     'session_with_cookies', 'url', 'valid_content', 'valid_response',
@@ -99,8 +99,10 @@ __all__ = [
     'bfs_tree', 'from_edgelist',
 
     # regex
-    'Regex', 'bakedict', 'grep', 'grep_t', 'grepitems',
-    'grepv', 'grepv_t', 'grepvitems', 'groupdict', 'groupdicts',
+    'Regex', 'bakedict', 
+    'grep', 'grep_t', 'grepitems', 'grepv', 'grepv_t', 
+    'igrep', 'grept', 'igrept', 'igrepv', 'igrepvt', 
+    'grepvitems', 'groupdict', 'groupdicts',
     'groupdicts_from_regexes', 'match_d', 're_search', 'regex_transform', 'to_regex',
     'vbakedict',
 
@@ -112,7 +114,9 @@ __all__ = [
     'random_pw', 'random_sample', 'random_sentence', 'random_str', 'random_user',
 
     # dictionary
-    'cmerge', 'create_key', 'dict_hash', 'drop_key', 'drop_keys',
+    'cassoc', 'cassoc_in', 'cdissoc', 'cmerge', 'create_key', 
+    'dict_hash', 'dict_md5', 'dict_sha1', 'dict_sha256',
+    'drop_key', 'drop_keys',
     'merge_keys', 'only_if_key', 'remove_key', 'remove_keys', 'replace_key',
     'set_key', 'switch_keys', 'update_if_key_exists', 'update_key', 'update_key_v',
     'valmaprec',

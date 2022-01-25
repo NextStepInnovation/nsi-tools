@@ -1,7 +1,7 @@
 from pathlib import Path
 
 # Excel
-from openpyxl import Workbook, load_workbook  # as _load_workbook
+from openpyxl import Workbook, load_workbook as _load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -12,9 +12,16 @@ from openpyxl.chart.marker import DataPoint
 
 # toolz
 from . import logging
-from .toolz import *
+from .toolz import curry, ensure_paths, compose, escape_row
 
 log = logging.new_log(__name__)
+
+def load_workbook(path, *a, **kw) -> Workbook:
+    '''Adds opened_from to Workbook object
+    '''
+    wb = _load_workbook(path, *a, **kw)
+    wb.opened_from = path
+    return wb
 
 @curry
 def set_border(cell, sides={'top', 'left', 'right', 'bottom'}):

@@ -134,9 +134,17 @@ def grep(raw_regex: Regex, iterable: Iterable[Union[str, Sequence, dict]],
         filter(search),
         tuple if to_tuple else noop,
     )
+igrep = grep(flags=re.I)
+igrept = igrep(to_tuple=True)
+
 grep_t = grep(to_tuple=True)
+grept = grep_t
+
 grepv = grep(exclude=True)
+igrepv = grepv(flags=re.I)
 grepv_t = grep(exclude=True, to_tuple=True)
+grepvt = grepv_t
+igrepvt = grepvt(flags=re.I)
 
 @curry
 def grepitems(raw_regex, iterable, **kw):
