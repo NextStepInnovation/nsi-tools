@@ -36,16 +36,21 @@ TIMEOUT_KEY = 'NSI_SMB_MIN_TIMEOUT'
 
 @curry
 def smbclient(domain, username, password, target, share, command,
-              *, timeout=5, getoutput=shell.getoutput):
+              *, timeout=5, getoutput=shell.getoutput, proxychains=False,
+              dry_run=False):
     timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
     domain = rf'{domain}//' if domain else ''
     command = (
+        "proxychains " if proxychains else ""
         f"smbclient //{target}/'{share}'"
         f" -U '{domain}{username}'%'{password}'"
     ) + (f" -t {timeout}" if timeout else '') + (
         f" -c '{command}'"
     )
-    log.debug(command)
+    log.debug(f'smbclient command: {command}')
+    if dry_run:
+        log.warning('Dry run')
+        return ''
     return getoutput(command)
 
 
@@ -131,15 +136,19 @@ def smb_path(*parts):
     return '/'.join(parts)
 
 def smbclient_ls(domain, username, password, target, share, *path_parts,
-                 getoutput=shell.getoutput, timeout=10):
+                 getoutput=shell.getoutput, timeout=10, proxychains=False,
+                 dry_run=False):
     path = smb_path(*path_parts or "")
     if ' ' in path:
         path = f'"{path}"'
     command = f'ls {path}'
-    log.debug(command)
+
     return pipe(
-        smbclient(domain, username, password, target, share, command,
-                  getoutput=getoutput, timeout=timeout).splitlines(),
+        smbclient(
+            domain, username, password, target, share, command,
+            getoutput=getoutput, timeout=timeout, 
+            proxychains=proxychains, dry_run=dry_run,
+        ).splitlines(),
         map(smb_output_line_dict(path, command)),
         filter(None),
         tuple,
@@ -149,25 +158,29 @@ smbclient_ls_t = partial(compose(tuple, smbclient_ls))
 
 def smbclient_mkdir(domain, username, password, target, share,
                     first_path_part, *rest_of_path,
-                    getoutput=shell.getoutput, timeout=3):
+                    getoutput=shell.getoutput, timeout=3, 
+                    proxychains=False, dry_run=False):
     parts = (first_path_part,) + rest_of_path
     path = smb_path(*parts)
     command = f'mkdir "{path}"'
-    log.debug(command)
 
     errors = _.maybe_pipe(
-        smbclient(domain, username, password, target, share, command,
-                  getoutput=getoutput, timeout=timeout).splitlines(),
+        smbclient(
+            domain, username, password, target, share, command,
+            getoutput=getoutput, timeout=timeout,
+            proxychains=proxychains, dry_run=dry_run,
+        ).splitlines(),
         map(smb_output_line_dict(path, command)),
         filter(None),
         smb_errors,
     )
-    if errors:
+    if errors and not dry_run:
         return False, errors
 
     results = smbclient_ls_t(
         domain, username, password, target, share, *parts,
-        getoutput=getoutput,
+        getoutput=getoutput, 
+        proxychains=proxychains, dry_run=dry_run
     )
     errors = smb_errors(results)
     if errors:
@@ -177,25 +190,29 @@ def smbclient_mkdir(domain, username, password, target, share,
     
 def smbclient_rmdir(domain, username, password, target, share,
                     first_path_part, *rest_of_path,
-                    getoutput=shell.getoutput, timeout=3):
+                    getoutput=shell.getoutput, timeout=3, 
+                    proxychains=False, dry_run=False):
     parts = (first_path_part,) + rest_of_path
     path = smb_path(*parts)
     command = f'rmdir "{path}"'
-    log.debug(command)
 
     errors = _.maybe_pipe(
-        smbclient(domain, username, password, target, share, command,
-                  getoutput=getoutput, timeout=timeout).splitlines(),
+        smbclient(
+            domain, username, password, target, share, command,
+            getoutput=getoutput, timeout=timeout, 
+            proxychains=proxychains, dry_run=dry_run,
+        ).splitlines(),
         map(smb_output_line_dict(path, command)),
         filter(None),
         smb_errors,
     )
-    if errors:
+    if errors and not dry_run:
         return False, errors
 
     results = smbclient_ls_t(
         domain, username, password, target, share, *parts,
-        getoutput=getoutput,
+        getoutput=getoutput, proxychains=proxychains, 
+        dry_run=dry_run
     )
     
     if has_smb_errors({'no_dir'}, results):
@@ -207,18 +224,20 @@ def smbclient_rmdir(domain, username, password, target, share,
 @curry
 def test_share_perms(domain, username, password, target, share, *,
                      getoutput=shell.getoutput, timeout=3,
-                     rng=None, prefix='kuzu'):
+                     rng=None, prefix='nsi', proxychains=False,
+                     dry_run=dry_run):
     rng = rng or random.Random(0)
 
     results = smbclient_ls(
         domain, username, password, target, share, '',
-        getoutput=getoutput, timeout=timeout,
+        getoutput=getoutput, timeout=timeout, proxychains=proxychains,
+        dry_run=dry_run,
     )
     errors = smb_errors(results)
     
     perms = set()
     
-    if errors and not has_smb_files(results):
+    if errors and not has_smb_files(results) and not dry_run:
         log.error(f'Error for {target}: {errors}')
         return perms, errors
 
@@ -230,46 +249,47 @@ def test_share_perms(domain, username, password, target, share, *,
     # First, check to see if the directory is already there.
     results = smbclient_ls(
         domain, username, password, target, share, test_dir_name,
-        getoutput=getoutput,
+        getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
     )
     if has_smb_files(results):
         # The directory is already there. Ouch... Hopefully, it's just
         # a remnant of a previously-killed smbclient session
         success, results = smbclient_rmdir(
             domain, username, password, target, share, test_dir_name,
-            getoutput=getoutput,
+            getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
         )
-        if success:
+        if success and not dry_run:
             # Good, we can remove it, so we have write access.
             return perms | {'write'}, ()
 
-        # Ok, there's something weird going on. Possibly a FS
-        # permissions thing where you can create directories but not
-        # remove them. Or, this user had write in the past, but now no
-        # longer does.
-        #
-        # Don't report having write permissions. Log that this
-        # directory is there and manual inspection is necessary.
-        log.error(
-            f'Test directory --> {test_dir_name} <-- exists already'
-            ' and should be removed by hand (if possible). MANUAL'
-            ' INSPECTION is necessary to determine WRITE permissions. '
-        )
-        return perms, (
-            {'error': {'test_dir_still_exists', 'kuzu_error',
-                       'bad_permissions', 'no_rmdir'}},
-        )
+        if not dry_run:
+            # Ok, there's something weird going on. Possibly a FS
+            # permissions thing where you can create directories but not
+            # remove them. Or, this user had write in the past, but now no
+            # longer does.
+            #
+            # Don't report having write permissions. Log that this
+            # directory is there and manual inspection is necessary.
+            log.error(
+                f'Test directory --> {test_dir_name} <-- exists already'
+                ' and should be removed by hand (if possible). MANUAL'
+                ' INSPECTION is necessary to determine WRITE permissions. '
+            )
+            return perms, (
+                {'error': {'test_dir_still_exists', 'kuzu_error',
+                           'bad_permissions', 'no_rmdir'}},
+            )
 
     # Create the directory, then remove it to determine write
     # permissions.
     success, results = smbclient_mkdir(
         domain, username, password, target, share, test_dir_name,
-        getoutput=getoutput,
+        getoutput=getoutput, proxychains=proxychains, dry_run=dry_run
     )
     if success:
         success, results = smbclient_rmdir(
             domain, username, password, target, share, test_dir_name,
-            getoutput=getoutput,
+            getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
         )
         if success:
             # We can create the directory, so we have write
@@ -290,14 +310,19 @@ smb_dir = smbclient(command='dir', timeout=3)
 
 @curry
 def smbclient_list(domain, username, password, target, *,
-                   timeout=5, getoutput=shell.getoutput):
+                   timeout=5, getoutput=shell.getoutput,
+                   proxychains=False, dry_run=False):
     timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
     domain = rf'{domain}//' if domain else ''
     command = (
+        'proxychains ' if proxychains else ''
         f'smbclient -L {target}'
         f" -U '{domain}{username}'%'{password}'"
     ) + f' -t {timeout}' if timeout else ''
-    log.debug(command)
+    log.debug(f'smbclient_list command: {command}')
+    if dry_run:
+        log.warning('Dry run')
+        return ''
     return getoutput(command)
 
 
@@ -310,11 +335,13 @@ share_re = re.compile(
 
 @curry
 def enum_shares(domain, username, password, target, *,
-                getoutput=shell.getoutput):
+                getoutput=shell.getoutput, proxychains=False,
+                dry_run=False):
     return pipe(
         smbclient_list(
             domain, username, password, target, timeout=3,
-            getoutput=getoutput,
+            getoutput=getoutput, proxychains=proxychains,
+            dry_run=dry_run,
         ).splitlines(),
         filter(lambda l: any(t in l for t in smbclient_types)),
         _.groupdicts(share_re),
@@ -325,8 +352,12 @@ def enum_shares(domain, username, password, target, *,
 ipc_query = smbclient(command='exit', share='IPC$', timeout=1)
 
 @curry
-def enum_os(username, password, target, *, getoutput=shell.getoutput):
-    output = ipc_query(username, password, target, getoutput=getoutput)
+def enum_os(username, password, target, *, getoutput=shell.getoutput,
+            proxychains=False, dry_run=False):
+    output = ipc_query(
+        username, password, target, getoutput=getoutput,
+        proxychains=proxychains, dry_run=dry_run,
+    )
     for line in output.splitlines():
         if "Domain=" in line:
             yield target, line
@@ -347,25 +378,34 @@ def line_data(regexes, content):
 
 @curry
 def rpcclient(command, domain, username, password, target, *,
-              getoutput=shell.getoutput):
+              getoutput=shell.getoutput, proxychains=False, dry_run=False):
     '''Run rpcclient with command for given credentials on target
     '''
     domain = rf'{domain}\\' if domain else ''
     command = (
+        'proxychains ' if proxychains else ''
         f"rpcclient -c '{command}'"
         f""" -U '{domain}{username}%{password}' {target}"""
     )
-    log.debug(command)
+    log.debug(f'rpcclient command: {command}')
+    if dry_run:
+        log.warning('Dry run')
+        return ''
     return getoutput(command)
 
 @curry
-def net_rpc_group_members(group, username, password, target,
-                          *, getoutput=shell.getoutput):
+def net_rpc_group_members(group, username, password, target, *, 
+                          getoutput=shell.getoutput, proxychains=False,
+                          dry_run=False):
     command = (
+        'proxychains ' if proxychains else ''
         f"net rpc group members '{group}'"
-        f" -U {username}%{password} -I {target}"
+        f" -U '{username}%{password}' -I {target}"
     )
-    log.debug(command)
+    log.debug(f'net rpc command: {command}')
+    if dry_run:
+        log.warning('Dry run')
+        return ''
     return getoutput(command)
 
 lsaquery = rpcclient('lsaquery')
@@ -411,10 +451,14 @@ lsaenumsid = rpcclient('lsaenumsid')
 
 @curry
 def lookupsids(domain, username, password, target, sid, *,
-               getoutput=shell.getoutput):
+               getoutput=shell.getoutput, proxychains=False,
+               dry_run=False):
     return pipe(
-        rpcclient(f'lookupsids {sid}', domain, username,
-                  password, target, getoutput=getoutput),
+        rpcclient(
+            f'lookupsids {sid}', domain, username,
+            password, target, getoutput=getoutput,
+            proxychains=proxychains, dry_run=dry_run,
+        ),
         line_data([
             r'^(?P<sid>S-\d+.*?)\s(?P<domain>.*?)\\(?P<name>[ \S]*)$'
         ]),
@@ -424,10 +468,13 @@ def lookupsids(domain, username, password, target, sid, *,
 
 @curry
 def lookupnames(domain, username, password, target, name, *,
-                getoutput=shell.getoutput):
+                getoutput=shell.getoutput, proxychains=False,
+                dry_run=False):
     return pipe(
-        rpcclient(f'lookupnames {name}', domain, username, password, target,
-                  getoutput=getoutput),
+        rpcclient(
+            f'lookupnames {name}', domain, username, password, target,
+            getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
+        ),
         line_data([
             r'(?P<name>[ \S]+?) (?P<sid>S-\d+-\d+.*?)'
             r' \((?P<type>[ \S]+?): (?P<type_number>\d+)\)',
@@ -438,47 +485,57 @@ def lookupnames(domain, username, password, target, name, *,
 
 @curry
 def known_users(domain, username, password, target, *,
-                getoutput=shell.getoutput):
+                getoutput=shell.getoutput, proxychains=False,
+                dry_run=False):
     return pipe(
         KNOWN_USERS,
         ' '.join,
-        lookupnames(domain, username, password, target, getoutput=getoutput),
+        lookupnames(domain, username, password, target, getoutput=getoutput,
+                    proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
 def users_from_rid_range(domain_sid, domain, username, password, target,
-                         rid_range, *, getoutput=shell.getoutput):
+                         rid_range, *, getoutput=shell.getoutput,
+                         proxychains=False, dry_run=False):
     return pipe(
         range(*pipe(rid_range, map(int))),
         map(lambda rid: f'{domain_sid}-{rid}'),
         ' '.join,
-        lookupsids(domain, username, password, target, getoutput=getoutput),
+        lookupsids(domain, username, password, target, getoutput=getoutput,
+                   proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
-def users_from_rids(domain_sid, domain, username, password, target, rids,
-                    *, getoutput=shell.getoutput):
+def users_from_rids(domain_sid, domain, username, password, target, rids, *,
+                    getoutput=shell.getoutput, proxychains=False,
+                    dry_run=False):
     return pipe(
         rids,
         map(lambda rid: f'{domain_sid}-{rid}'),
         ' '.join,
-        lookupsids(domain, username, password, target, getoutput=getoutput),
+        lookupsids(domain, username, password, target, getoutput=getoutput,
+                   proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
-def enum_lsa(domain, username, password, target, *, getoutput=shell.getoutput):
+def enum_lsa(domain, username, password, target, *, getoutput=shell.getoutput,
+             proxychains=False, dry_run=False):
     return pipe(
         lsaenumsid(domain, username, password, target),
         line_data([r'^(?P<sid>S-\d+.*)$']),
         map(lambda d: d['sid']),
         filter(lambda sid: sid.startswith('S-1-5-21')),
         ' '.join,
-        lookupsids(domain, username, password, target, getoutput=getoutput),
+        lookupsids(domain, username, password, target, getoutput=getoutput,
+                   proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
-def polenum(domain, username, password, target, *, getoutput=shell.getoutput):
+def polenum(domain, username, password, target, *, getoutput=shell.getoutput,
+            proxychains=False):
     command = (
+        'proxychains ' if proxychains else ''
         f"polenum -d {domain or '.'} '{username}':'{password}'@'{target}'"
     )
     log.debug(command)

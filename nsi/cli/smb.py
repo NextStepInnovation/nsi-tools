@@ -42,11 +42,20 @@ log = logging.new_log(__name__)
     help='Force run'
 )
 @click.option(
+    '--proxychains', is_flag=True,
+    help='Run with proxychains',
+)
+@click.option(
+    '--dry-run', is_flag=True,
+    help="Don't run command",
+)
+@click.option(
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
 def enumerate_smb_shares(ippath, output_dir, target, username, password, 
-                         domain, ssh, max_workers, echo, force, loglevel):
+                         domain, ssh, max_workers, echo, force, 
+                         dry_run, proxychains, loglevel):
     logging.setup_logging(loglevel)
     echo = echo or loglevel == 'debug'
 
@@ -63,6 +72,8 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
             ' -i/--ippath or -t/--target'
         )
 
+    if proxychains:
+        log.info('Using proxychains...')
 
     getoutput = shell.getoutput(echo=echo)
     if ssh:
@@ -70,9 +81,11 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
 
     enum_shares = smb.session.enum_shares(
         domain, username, password, getoutput=getoutput,
+        proxychains=proxychains, dry_run=dry_run,
     )
     test_share_perms = smb.session.test_share_perms(
         domain, username, password, getoutput=getoutput,
+        proxychains=proxychains, dry_run=dry_run,
     )
 
     output_dir = (
