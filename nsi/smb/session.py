@@ -41,7 +41,7 @@ def smbclient(domain, username, password, target, share, command,
     timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
     domain = rf'{domain}//' if domain else ''
     command = (
-        "proxychains " if proxychains else ""
+        "proxychains " if proxychains else "" +
         f"smbclient //{target}/'{share}'"
         f" -U '{domain}{username}'%'{password}'"
     ) + (f" -t {timeout}" if timeout else '') + (
@@ -315,7 +315,7 @@ def smbclient_list(domain, username, password, target, *,
     timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
     domain = rf'{domain}//' if domain else ''
     command = (
-        'proxychains ' if proxychains else ''
+        'proxychains ' if proxychains else '' +
         f'smbclient -L {target}'
         f" -U '{domain}{username}'%'{password}'"
     ) + f' -t {timeout}' if timeout else ''
@@ -383,7 +383,7 @@ def rpcclient(command, domain, username, password, target, *,
     '''
     domain = rf'{domain}\\' if domain else ''
     command = (
-        'proxychains ' if proxychains else ''
+        'proxychains ' if proxychains else '' +
         f"rpcclient -c '{command}'"
         f""" -U '{domain}{username}%{password}' {target}"""
     )
@@ -398,7 +398,7 @@ def net_rpc_group_members(group, username, password, target, *,
                           getoutput=shell.getoutput, proxychains=False,
                           dry_run=False):
     command = (
-        'proxychains ' if proxychains else ''
+        'proxychains ' if proxychains else '' +
         f"net rpc group members '{group}'"
         f" -U '{username}%{password}' -I {target}"
     )
@@ -535,7 +535,7 @@ def enum_lsa(domain, username, password, target, *, getoutput=shell.getoutput,
 def polenum(domain, username, password, target, *, getoutput=shell.getoutput,
             proxychains=False, dry_run=False):
     command = (
-        'proxychains ' if proxychains else ''
+        'proxychains ' if proxychains else '' +
         f"polenum -d {domain or '.'} '{username}':'{password}'@'{target}'"
     )
     log.debug(f'polenum command: {command}')
