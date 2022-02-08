@@ -313,7 +313,7 @@ def smbclient_list(domain, username, password, target, *,
                    timeout=5, getoutput=shell.getoutput,
                    proxychains=False, dry_run=False):
     timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
-    domain = rf'{domain}\\' if domain else ''
+    domain = f'{domain}\\' if domain else ''
     command = (
         ('proxychains ' if proxychains else '') +
         f'smbclient -L {target}'
