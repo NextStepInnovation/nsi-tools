@@ -39,7 +39,7 @@ def smbclient(domain, username, password, target, share, command,
               *, timeout=5, getoutput=shell.getoutput, proxychains=False,
               dry_run=False):
     timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
-    domain = rf'{domain}//' if domain else ''
+    domain = f'{domain}\\' if domain else ''
     command = (
         ("proxychains " if proxychains else "") +
         f"smbclient //{target}/'{share}'"
@@ -381,7 +381,7 @@ def rpcclient(command, domain, username, password, target, *,
               getoutput=shell.getoutput, proxychains=False, dry_run=False):
     '''Run rpcclient with command for given credentials on target
     '''
-    domain = rf'{domain}\\' if domain else ''
+    domain = f'{domain}\\' if domain else ''
     command = (
         ('proxychains ' if proxychains else '') +
         f"rpcclient -c '{command}'"
