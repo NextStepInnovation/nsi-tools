@@ -3,7 +3,7 @@ from typing import Union, Iterable
 import pyperclip
 
 from .common import (
-    pipe, curry, map, filter,
+    pipe, curry, map, filter, concatv, strip,
     is_seq, is_str, to_str,
 )
 
@@ -106,4 +106,34 @@ def xorlines(A: str, B: str):
     linesA = lines_without_comments(A)
     linesB = lines_without_comments(B)
     return pipe(linesA ^ linesB, sorted)
+
+
+# ----------------------------------------------------------------------
+#
+# HTML conversion functions
+#
+# ----------------------------------------------------------------------
+
+def html_list(items):
+    items = pipe(
+        items,
+        map(strip),
+        filter(None),
+        tuple,
+    )
+
+    if not items:
+        return ''
+
+    if len(items) == 1:
+        return items[0]
+
+    return pipe(
+        concatv(
+            ['<ul>'],
+            [f'<li>{i}</li>' for i in items],
+            ['</ul>'],
+        ),
+        ''.join
+    )
 

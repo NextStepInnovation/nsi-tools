@@ -1,4 +1,5 @@
 import calendar
+from tokenize import group
 
 import jinja2
 
@@ -54,5 +55,6 @@ def nsi_filters(env: jinja2.Environment, **filters):
             'year': year,
             'month': month,
             'b64encode': b64encode_str,
+            'groupby': groupby,
         }, filters
     ))

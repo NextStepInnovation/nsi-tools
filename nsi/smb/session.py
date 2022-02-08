@@ -225,7 +225,7 @@ def smbclient_rmdir(domain, username, password, target, share,
 def test_share_perms(domain, username, password, target, share, *,
                      getoutput=shell.getoutput, timeout=3,
                      rng=None, prefix='nsi', proxychains=False,
-                     dry_run=dry_run):
+                     dry_run=False):
     rng = rng or random.Random(0)
 
     results = smbclient_ls(
@@ -533,12 +533,15 @@ def enum_lsa(domain, username, password, target, *, getoutput=shell.getoutput,
 
 @curry
 def polenum(domain, username, password, target, *, getoutput=shell.getoutput,
-            proxychains=False):
+            proxychains=False, dry_run=False):
     command = (
         'proxychains ' if proxychains else ''
         f"polenum -d {domain or '.'} '{username}':'{password}'@'{target}'"
     )
-    log.debug(command)
+    log.debug(f'polenum command: {command}')
+    if dry_run:
+        log.warning('Dry run')
+        return ''
     return getoutput(command)
 
 polenum_password_policy = compose(
@@ -578,7 +581,7 @@ rpc_password_policy = compose(
     ),
     rpcclient('getdompwinfo'),
 )
-    
+
 
 class null:
     pass

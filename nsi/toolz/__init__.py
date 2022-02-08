@@ -50,7 +50,7 @@ __all__ = [
     # text_processing
     'clipboard_copy', 'clipboard_paste', 'difflines', 'escape_row', 'intlines',
     'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line',
-    'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines',
+    'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
 
     # filesystem
     'POS_PARAM_KINDS', 'backup_path', 'check_parents_for_file', 
