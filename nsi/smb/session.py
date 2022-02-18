@@ -17,12 +17,22 @@ from pathlib import Path
 import os
 import re
 import random
+from datetime import datetime
+import typing as T
+import time
+import tempfile
 from typing import Sequence, Set
+import pprint
+import dataclasses
+from dataclasses import dataclass
 
 from pymaybe import Nothing
 
+from nsi.toolz.filesystem import ensure_paths
+
 from ..toolz import (
     pipe, curry, map, filter, merge, compose, partial,
+    maybe, splitlines, compose_left, strip,
 )
 from .. import toolz as _
 from .. import shell
@@ -34,24 +44,117 @@ log = logging.new_log(__name__)
 KNOWN_USERS = ['Administrator', 'Guest', 'krbtgt', 'root', 'bin']
 TIMEOUT_KEY = 'NSI_SMB_MIN_TIMEOUT'
 
+str_command = compose_left(
+    map(strip),
+    filter(None),
+    ' '.join,
+)
+
+@dataclass
+class SmbClientArgs:
+    domain: str
+    username: str
+    password: str
+    target: str
+    share: str
+    getoutput: T.Callable[[str], str] = shell.getoutput
+    timeout: int = 5
+    polite: T.Optional[float] = None
+    proxychains: bool = False
+    dry_run: bool = False
+
+    def __repr__(self):
+        return (
+            f'<SmbClientArgs: {self.command("")}>'
+        )
+
+    def validate(self):
+        invalid = pipe(
+            ['domain', 'username', 'password', 'target', 'share'],
+            filter(lambda a: _.is_none(getattr(self, a))),
+            tuple,
+        )
+        if invalid:
+            raise AttributeError(
+                f'The following attributes are not set: {", ".join(invalid)}'
+            )
+
+    def prep_command(self, command: str):
+        if "'" in command:
+            command = command.replace(
+                "'", ''' '"'"' '''.strip()
+            )
+        return command
+
+    def command(self, command: str):
+        self.validate()
+        timeout = max(self.timeout, os.environ.get(TIMEOUT_KEY, 0))
+        domain = f'{self.domain}\\' if self.domain else ''
+        command_parts = [
+            ("proxychains -q" if self.proxychains else ""),
+            (f"smbclient //{self.target}/'{self.share}'"
+             f" -U '{domain}{self.username}'%'{self.password}'"),
+            f"-t {timeout}" if timeout else '',
+            f"-c '{self.prep_command(command)}'" if command else '',
+        ]
+        return pipe(
+            command_parts,
+            str_command,
+        )
+
+    def list_command(self):
+        self.validate()
+        timeout = max(self.timeout, os.environ.get(TIMEOUT_KEY, 0))
+        domain = f'{self.domain}\\' if self.domain else ''
+        command_parts = [
+            'proxychains -q' if self.proxychains else '',
+            (f'smbclient -g -L {self.target}'
+             f" -U '{domain}{self.username}'%'{self.password}'"),
+            f'-t {timeout}' if timeout else '',
+        ]
+        return pipe(
+            command_parts,
+            str_command,
+        )
+
 @curry
-def smbclient(domain, username, password, target, share, command,
-              *, timeout=5, getoutput=shell.getoutput, proxychains=False,
-              dry_run=False):
-    timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
-    domain = f'{domain}\\' if domain else ''
-    command = (
-        ("proxychains " if proxychains else "") +
-        f"smbclient //{target}/'{share}'"
-        f" -U '{domain}{username}'%'{password}'"
-    ) + (f" -t {timeout}" if timeout else '') + (
-        f" -c '{command}'"
+def new_args(domain: str, username: str, password: str, target: str, share: str,
+             *, getoutput=SmbClientArgs.getoutput, 
+             timeout: int = SmbClientArgs.timeout, 
+             proxychains: bool = SmbClientArgs.proxychains, 
+             polite: float = None,
+             dry_run: bool = SmbClientArgs.dry_run):
+    args = SmbClientArgs(
+        domain, username, password, target, share, 
+        getoutput=getoutput, timeout=timeout, proxychains=proxychains,
+        dry_run=dry_run, polite=polite,
     )
+    log.debug(f'Completed args: {args}')
+    return args
+
+SmbOutput = T.NewType('SmbOutput', str)
+
+@curry
+def smbclient(args: SmbClientArgs, command, **repl_args) -> SmbOutput:
+    args = dataclasses.replace(args, **repl_args)
+    command = args.command(command)
     log.debug(f'smbclient command: {command}')
-    if dry_run:
+    if args.dry_run:
         log.warning('Dry run')
         return ''
-    return getoutput(command)
+    if args.polite:
+        time.sleep(args.polite)
+    return args.getoutput(command)
+
+@curry
+def smbclient_list(args: SmbClientArgs, **repl_args) -> SmbOutput:
+    args = dataclasses.replace(args, **repl_args)
+    command = args.list_command()
+    log.debug(f'smbclient_list command: {command}')
+    if args.dry_run:
+        log.warning('Dry run')
+        return ''
+    return args.getoutput(command)
 
 
 smb_file_type_map = {
@@ -65,11 +168,40 @@ smb_file_type_map = {
     'DHS': 'dir',
 }
 
+smb_recursive_dir_re = re.compile(
+    r'^(?P<path>\\.*)$'
+)
+
 smb_file_re = re.compile(
     r'^\s+(?P<name>.*?)\s+'
-    fr'(?P<type>{"|".join(smb_file_type_map.keys())})\s+'
+    fr'(?P<type>{"|".join(smb_file_type_map.keys())})r?\s+'
     r'(?P<size>\d+)\s+(?P<ts>.*)$'
 )
+
+class FileDict(T.TypedDict):
+    name: str
+    path: Path
+    type: str
+    size: int
+    line: str
+    dt: T.Optional[datetime]
+
+def new_file_dict(data: dict) -> FileDict:
+    name, ts, size, type, line = pipe(
+        ['name', 'ts', 'size', 'type', 'line'],
+        map(data.get),
+    )
+    return FileDict(merge(
+        data,
+        {'path': Path(name)},
+        {'dt': _.maybe_dt(ts, default=ts)},
+        {'size': _.maybe_int(size, default=size)},
+        {'type': smb_file_type_map[type]},
+        {'line': line}
+    ))
+
+def is_file_dict(data: dict):
+    return 'path' in data and 'type' in data and 'size' in data
 
 smb_error_type_map = {
     'STATUS_LOGON_FAILURE': {'logon', 'bad_auth'},
@@ -84,246 +216,273 @@ smb_error_type_map = {
     'STATUS_OBJECT_PATH_NOT_FOUND': {'bad_path', 'not_found'},
     'STATUS_NOT_A_DIRECTORY': {'bad_path', 'not_dir'},
     'STATUS_BAD_NETWORK_NAME': {'bad_share', 'not_a_share'},
+    'STATUS_INVALID_INFO_CLASS': {'ipc_share',},
 }
+
 smb_error_re = re.compile(
     fr'NT_(?P<raw_error>.*?)(?:\W+|$)'
     # r'NT_(?P<raw_error>.*?)\s+'
 )
+smb_file_error_re = re.compile(
+    r'Error opening local file '
+)
 
-@curry
-def smb_output_line_dict(path: str, command: str, line):
+class ErrorDict(T.TypedDict):
+    raw_error: str
+    line: str
+    error: T.Set[str]
+
+def new_error_dict(data: dict) -> ErrorDict:
+    raw_error = data.get('raw_error')
+
+    error = smb_error_type_map.get(raw_error, set())
+
+    return ErrorDict(merge(
+        data,
+        {'error': error} if error else {},
+    ))
+
+def is_error_dict(data: dict):
+    return 'error' in data
+
+def smb_output_line_dict(line: str) -> FileDict | ErrorDict:
     file_match = smb_file_re.search(line)
     if file_match:
-        d = file_match.groupdict()
-        return merge(
-            d,
-            {'path': path, 'command': command},
-            {'dt': _.maybe_dt(d['ts'])},
-            {'size': int(d['size'])},
-            {'type': smb_file_type_map[d['type']]},
-        )
+        return new_file_dict(merge(
+            file_match.groupdict(),
+            {'line': line},
+        ))
+
+
+    data = {}
     error_match = smb_error_re.search(line)
     if error_match:
-        d = error_match.groupdict()
-        return merge(
-            d,
-            {'path': path, 'command': command},
-            {'error': smb_error_type_map.get(
-                d['raw_error'], set(),
-            )},
-            {'error_line': line},
-        )
-    return Nothing()
+        data = error_match.groupdict()
+    return new_error_dict(merge(data, {'line': line}))
 
-def smb_errors(results: Sequence[dict]):
-    return pipe(
-        results,
-        filter(lambda d: 'error' in d),
-        tuple,
-    )
+smb_errors = compose_left(
+    filter(is_error_dict),
+    tuple,
+)
+smb_files = compose_left(
+    filter(is_file_dict),
+    filter(lambda d: d['name'] not in {'.', '..'}),
+    tuple,
+)
 
 @curry
 def has_smb_errors(errors: Set[str], results):
     return any(errors.issubset(e['error']) for e in smb_errors(results))
 
-@curry
+has_no_dir = has_smb_errors({'no_dir'})
+has_no_file = has_smb_errors({'no_file'})
+
 def has_smb_files(results):
-    return any('error' not in r for r in results)
+    return pipe(
+        results,
+        map(is_file_dict),
+        any,
+    )
 
 def smb_path(*parts):
-    if len(parts) > 1 and parts[-1] == '/':
-        return '/'.join(parts) + '/'
     return '/'.join(parts)
 
-def smbclient_ls(domain, username, password, target, share, *path_parts,
-                 getoutput=shell.getoutput, timeout=10, proxychains=False,
-                 dry_run=False):
-    path = smb_path(*path_parts or "")
-    if ' ' in path:
-        path = f'"{path}"'
-    command = f'ls {path}'
+@curry
+def walk(ls_func: T.Callable[[T.Tuple[str]], T.Iterable[FileDict]],
+         start: Path, *, skip: T.Sequence[str]) -> T.Iterable[FileDict]:
+    start = Path(start)
+    skip = pipe(
+        skip,
+        map(Path),
+        set,
+    )
 
+    def walker(path, root=Path('/')):
+        for fd in ls_func(f'{path}/'):
+            fd_path = root / fd['path']
+            if fd_path in skip:
+                continue
+            match fd:
+                case {'type': 'file'}:
+                    yield merge(
+                        fd, {'path': fd_path},
+                    )
+                case {'type': 'dir', 'name': '..' | '.'}:
+                    pass
+                case {'type': 'dir'}:
+                    yield from walker(fd_path, root=fd_path)
+    
+    return walker(start)
+
+def smb_results(output: SmbOutput):
     return pipe(
-        smbclient(
-            domain, username, password, target, share, command,
-            getoutput=getoutput, timeout=timeout, 
-            proxychains=proxychains, dry_run=dry_run,
-        ).splitlines(),
-        map(smb_output_line_dict(path, command)),
+        output,
+        splitlines,
+        map(smb_output_line_dict),
         filter(None),
         tuple,
     )
 
-smbclient_ls_t = partial(compose(tuple, smbclient_ls))
+@curry
+def smbclient_ls(args: SmbClientArgs, path: Path, **repl_args):
+    command = f'ls "{path}"'
+    return pipe(
+        smbclient(args, command, **repl_args),
+        smb_results,
+    )
 
-def smbclient_mkdir(domain, username, password, target, share,
-                    first_path_part, *rest_of_path,
-                    getoutput=shell.getoutput, timeout=3, 
-                    proxychains=False, dry_run=False):
-    parts = (first_path_part,) + rest_of_path
-    path = smb_path(*parts)
-    command = f'mkdir "{path}"'
-
-    errors = _.maybe_pipe(
-        smbclient(
-            domain, username, password, target, share, command,
-            getoutput=getoutput, timeout=timeout,
-            proxychains=proxychains, dry_run=dry_run,
-        ).splitlines(),
-        map(smb_output_line_dict(path, command)),
-        filter(None),
+@curry
+@ensure_paths
+def smbclient_get(args: SmbClientArgs, remote_path: Path, 
+                  local_dir: Path = Path('.'), **repl_args):
+    local_path = local_dir / remote_path.name
+    
+    command = f'get "{remote_path}" "{local_path}"'
+    errors = pipe(
+        smbclient(args, command, **repl_args),
+        smb_results,
         smb_errors,
     )
-    if errors and not dry_run:
+    if errors:
         return False, errors
 
-    results = smbclient_ls_t(
-        domain, username, password, target, share, *parts,
-        getoutput=getoutput, 
-        proxychains=proxychains, dry_run=dry_run
+    return True, local_path
+
+@curry
+@ensure_paths
+def smbclient_put(args: SmbClientArgs, local_path: Path, 
+                  remote_path: Path = None, **repl_args):
+    remote_path = remote_path or Path(local_path.name)
+    command = f'put "{local_path}" "{remote_path}"'
+
+    errors = pipe(
+        smbclient(args, command, **repl_args),
+        smb_results,
+        smb_errors,
     )
+    if errors:
+        return False, errors
+
+    results = smbclient_ls(args, remote_path)
+    errors = smb_errors(results)
+    if errors:
+        return False, errors
+    
+    return True, smb_files(results)
+
+@curry
+def smbclient_mkdir(args: SmbClientArgs, path: Path, **repl_args):
+    command = f'mkdir "{path}"'
+
+    errors = pipe(
+        smbclient(args, command, **repl_args),
+        smb_results,
+        smb_errors,
+    )
+    if errors:
+        return False, errors
+
+    results = smbclient_ls(args, path)
     errors = smb_errors(results)
     if errors:
         return False, errors
     
     return True, results
     
-def smbclient_rmdir(domain, username, password, target, share,
-                    first_path_part, *rest_of_path,
-                    getoutput=shell.getoutput, timeout=3, 
-                    proxychains=False, dry_run=False):
-    parts = (first_path_part,) + rest_of_path
-    path = smb_path(*parts)
+@curry
+def smbclient_rmdir(args: SmbClientArgs, path: Path, **repl_args):
     command = f'rmdir "{path}"'
 
-    errors = _.maybe_pipe(
-        smbclient(
-            domain, username, password, target, share, command,
-            getoutput=getoutput, timeout=timeout, 
-            proxychains=proxychains, dry_run=dry_run,
-        ).splitlines(),
-        map(smb_output_line_dict(path, command)),
-        filter(None),
+    errors = pipe(
+        smbclient(args, command, **repl_args),
+        smb_results,
         smb_errors,
     )
-    if errors and not dry_run:
+    if errors:
         return False, errors
 
-    results = smbclient_ls_t(
-        domain, username, password, target, share, *parts,
-        getoutput=getoutput, proxychains=proxychains, 
-        dry_run=dry_run
-    )
+    results = smbclient_ls(args, path)
     
-    if has_smb_errors({'no_dir'}, results):
+    if has_no_dir(results):
         return True, ()
     
     return False, smb_errors(results)
     
-
 @curry
-def test_share_perms(domain, username, password, target, share, *,
-                     getoutput=shell.getoutput, timeout=3,
-                     rng=None, prefix='nsi', proxychains=False,
-                     dry_run=False):
+def smbclient_rm(args: SmbClientArgs, path: Path, **repl_args):
+    command = f'rm "{path}"'
+
+    errors = pipe(
+        smbclient(args, command, **repl_args),
+        smb_results,
+        smb_errors,
+    )
+    if errors:
+        return False, errors
+
+    results = smbclient_ls(args, path)
+    
+    if has_no_file(results):
+        return True, ()
+    
+    return False, smb_errors(results)
+    
+@curry
+def test_share_perms(args: SmbClientArgs, *, rng=None, prefix='nsi'):
     rng = rng or random.Random(0)
 
-    results = smbclient_ls(
-        domain, username, password, target, share, '',
-        getoutput=getoutput, timeout=timeout, proxychains=proxychains,
-        dry_run=dry_run,
-    )
+    results = smbclient_ls(args, "/")
     errors = smb_errors(results)
     
     perms = set()
     
-    if errors and not has_smb_files(results) and not dry_run:
-        log.error(f'Error for {target}: {errors}')
+    if errors and not has_smb_files(results):
+        log.error(f'Error for {args.target}: {pprint.pformat(errors)}')
         return perms, errors
 
-    log.debug(f'{username}:{password} on {target} has READ')
+    log.debug(f'{args.username}:{args.password} on {args.target} has READ')
     perms = perms | {'read'}
+
+    # Check for file/directory writing privilieges
     
-    test_dir_name = prefix + _.random_str(10, rng=rng)
-
-    # First, check to see if the directory is already there.
-    results = smbclient_ls(
-        domain, username, password, target, share, test_dir_name,
-        getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
-    )
-    if has_smb_files(results):
-        # The directory is already there. Ouch... Hopefully, it's just
-        # a remnant of a previously-killed smbclient session
-        success, results = smbclient_rmdir(
-            domain, username, password, target, share, test_dir_name,
-            getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
-        )
-        if success and not dry_run:
-            # Good, we can remove it, so we have write access.
-            return perms | {'write'}, ()
-
-        if not dry_run:
-            # Ok, there's something weird going on. Possibly a FS
-            # permissions thing where you can create directories but not
-            # remove them. Or, this user had write in the past, but now no
-            # longer does.
-            #
-            # Don't report having write permissions. Log that this
-            # directory is there and manual inspection is necessary.
-            log.error(
-                f'Test directory --> {test_dir_name} <-- exists already'
-                ' and should be removed by hand (if possible). MANUAL'
-                ' INSPECTION is necessary to determine WRITE permissions. '
-            )
-            return perms, (
-                {'error': {'test_dir_still_exists', 'kuzu_error',
-                           'bad_permissions', 'no_rmdir'}},
-            )
+    # Directory writing
+    test_dir_name = prefix + _.random_str(20, rng=rng)
 
     # Create the directory, then remove it to determine write
     # permissions.
-    success, results = smbclient_mkdir(
-        domain, username, password, target, share, test_dir_name,
-        getoutput=getoutput, proxychains=proxychains, dry_run=dry_run
-    )
+    success, mkdir_errors = smbclient_mkdir(args, test_dir_name)
+    errors = _.concatv(errors, mkdir_errors)
     if success:
-        success, results = smbclient_rmdir(
-            domain, username, password, target, share, test_dir_name,
-            getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
-        )
-        if success:
-            # We can create the directory, so we have write
-            # permissions
-            return perms | {'write'}, ()
+        perms = perms | {'write-dir'}
+        success, rmdir_errors = smbclient_rmdir(args, test_dir_name)
+        errors = _.concatv(errors, rmdir_errors)
+        if not success:
+            # We can create, but we can't remove. This is unusual, but not
+            # impossible.
+            perms = perms | {'cannot-remove-dir'}
 
-        # We can create, but we can't remove. This is unusual, but not
-        # impossible.
-        errors = results
-        return perms, errors
+    # File writing
+    test_file_name = prefix + _.random_str(20, rng=rng)
+    test_content = _.random_str(2**10, rng=rng)
+    current_dir = Path('.').resolve()
+    with tempfile.NamedTemporaryFile() as rfp:
+        rfp.write(test_content.encode())
+        rfp.flush()
+        temp_path = Path(rfp.name)
+        success, put_errors = smbclient_put(args, temp_path, test_file_name)
+
+    errors = _.concatv(errors, put_errors)
+    if success:
+        perms = perms | {'write-file'}
+
+        success, rm_errors = smbclient_rm(args, test_file_name)
+        errors = _.concatv(errors, rm_errors)
+        if not success:
+            # Can create file, but cannot remove
+            perms |= {'cannot-remove-file'}
 
     # Could not create directory, so must not have write permissions
-    errors = results
-    return perms, errors
-
-
-smb_dir = smbclient(command='dir', timeout=3)
-
-@curry
-def smbclient_list(domain, username, password, target, *,
-                   timeout=5, getoutput=shell.getoutput,
-                   proxychains=False, dry_run=False):
-    timeout = max(timeout, os.environ.get(TIMEOUT_KEY, 0))
-    domain = f'{domain}\\' if domain else ''
-    command = (
-        ('proxychains ' if proxychains else '') +
-        f'smbclient -L {target}'
-        f" -U '{domain}{username}'%'{password}'"
-    ) + f' -t {timeout}' if timeout else ''
-    log.debug(f'smbclient_list command: {command}')
-    if dry_run:
-        log.warning('Dry run')
-        return ''
-    return getoutput(command)
+    return perms, pipe(errors, tuple)
 
 
 smbclient_types = ['Disk', 'IPC', 'Printer']
@@ -332,37 +491,34 @@ share_re = re.compile(
     fr'^\s+(?P<name>\S*?)\s+(?P<type>{"|".join(smbclient_types)})'
     r'\s+(?P<desc>.*)'
 )
+share_re = re.compile(
+    r'.*?\|.*?\|.*?'
+)
 
 @curry
-def enum_shares(domain, username, password, target, *,
-                getoutput=shell.getoutput, proxychains=False,
-                dry_run=False):
+def enum_shares(args: SmbClientArgs, **repl_args):
+    columns = ['type', 'name', 'comment']
     return pipe(
-        smbclient_list(
-            domain, username, password, target, timeout=3,
-            getoutput=getoutput, proxychains=proxychains,
-            dry_run=dry_run,
-        ).splitlines(),
-        filter(lambda l: any(t in l for t in smbclient_types)),
-        _.groupdicts(share_re),
-        map(lambda d: merge({'ip': target}, d)),
+        smbclient_list(args, **repl_args),
+        splitlines,
+        filter(share_re.search),
+        map(_.split(sep='|')),
+        map(lambda t: dict(zip(*[columns, t]))),
+        filter(lambda d: d['type'] in smbclient_types),
+        map(lambda d: merge({'ip': args.target}, d)),
         tuple,
     )
 
 ipc_query = smbclient(command='exit', share='IPC$', timeout=1)
 
 @curry
-def enum_os(username, password, target, *, getoutput=shell.getoutput,
-            proxychains=False, dry_run=False):
-    output = ipc_query(
-        username, password, target, getoutput=getoutput,
-        proxychains=proxychains, dry_run=dry_run,
-    )
+def enum_os(args: SmbClientArgs):
+    output = ipc_query(args)
     for line in output.splitlines():
         if "Domain=" in line:
-            yield target, line
+            yield args.target, line
         elif "NT_STATUS_LOGON_FAILURE" in line:
-            log.error(f'{target}: Enum OS failed: {line}')
+            log.error(f'{args.target}: Enum OS failed: {line}')
             return
 
 @curry
@@ -532,17 +688,20 @@ def enum_lsa(domain, username, password, target, *, getoutput=shell.getoutput,
     )
 
 @curry
-def polenum(domain, username, password, target, *, getoutput=shell.getoutput,
-            proxychains=False, dry_run=False):
-    command = (
-        ('proxychains ' if proxychains else '') +
-        f"polenum -d {domain or '.'} '{username}':'{password}'@'{target}'"
+def polenum(args: SmbClientArgs):
+    command = pipe(
+        [
+            ('proxychains ' if args.proxychains else ''),
+            (f"polenum -d {args.domain or '.'}"
+             f" '{args.username}':'{args.password}'@'{args.target}'"),
+        ],
+        str_command,
     )
     log.debug(f'polenum command: {command}')
-    if dry_run:
+    if args.dry_run:
         log.warning('Dry run')
         return ''
-    return getoutput(command)
+    return args.getoutput(command)
 
 polenum_password_policy = compose(
     merge,
@@ -585,9 +744,13 @@ rpc_password_policy = compose(
 
 class null:
     pass
-
-null.enum_shares = enum_shares('', '', '')
-null.polenum_password_policy = partial(
-    polenum_password_policy, '', '', ''
+null_args = new_args('', '', '')
+null.enum_shares = compose_left(
+    null_args,
+    enum_shares,
+)
+null.polenum_password_policy = compose_left(
+    null_args,
+    polenum_password_policy,
 )
 

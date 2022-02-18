@@ -1,2 +1,2 @@
-from . import session, smbmap
+from . import session, smbmap, mining
 

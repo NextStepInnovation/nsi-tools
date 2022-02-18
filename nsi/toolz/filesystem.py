@@ -7,6 +7,7 @@ from typing import *
 
 from pymaybe import Nothing
 import chardet
+import charset_normalizer
 from toolz.functoolz import compose_left, compose
 
 from .common import (
@@ -49,10 +50,15 @@ def older(path: Union[str, Path], test: Union[str, Path]):
     '''
     return ctime(path) < ctime(test)
 
-def is_path(t):
+def is_path_type(t):
     return t in {
         Union[str, Path], Path
     }
+
+def is_path(obj):
+    if isinstance(obj, (Path, str)):
+        return True
+    return False
 
 POS_PARAM_KINDS = {
     inspect.Parameter.POSITIONAL_ONLY,
@@ -87,7 +93,7 @@ def ensure_paths(func, *, expanduser: bool=True):
         name: (i, param)
         for i, (name, param)
         in enumerate(inspect.signature(func).parameters.items())
-        if is_path(param.annotation)
+        if is_path_type(param.annotation)
     }
 
     pos_params = {
@@ -176,7 +182,8 @@ def read_text(path: Union[str, Path]):
     encoding = 'utf-8'
     with path.open('rb') as rfp:
         test_bytes = rfp.read(1024)
-        result = chardet.detect(test_bytes)
+        # result = chardet.detect(test_bytes)
+        result = charset_normalizer.detect(test_bytes)
         log.debug(f'read_text: chardet result {result}')
         if result['confidence'] > 0.8:
             encoding = result['encoding']
@@ -191,8 +198,15 @@ def read_text(path: Union[str, Path]):
         )
         return ''
     
-slurp = read_text    
-slurplines = compose_left(slurp, splitlines)
+slurp = read_text
+
+@ensure_paths
+def slurplines(path: Path, n: int = None):
+    with path.open() as rfp:
+        for i, line in enumerate(rfp):
+            if n is not None and i == n:
+                break
+            yield line.rstrip('\n')
 
 @ensure_paths
 def read_bytes(path: Union[str, Path]):
@@ -211,8 +225,20 @@ def read_bytes(path: Union[str, Path]):
     '''
     return path.read_bytes()
 slurpb = read_bytes
-slurpblines = compose_left(slurp, splitlines)
 
+@ensure_paths
+def slurpblines(path: Path, n: int = None):
+    with path.open('rb') as rfp:
+        for i, line in enumerate(rfp):
+            if n is not None and i == n:
+                break
+            yield line.rstrip(b'\n')
+
+@ensure_paths
+def slurpbchunks(size: int, path: Path, n: int = None):
+    with path.open('rb') as rfp:
+        while chunk := rfp.read(size):
+            yield chunk
 
 @curry
 @ensure_paths
@@ -236,4 +262,10 @@ def backup_path(path: Path):
         ))
     )
     
-
+@ensure_paths
+def convert_utf8(path: Path):
+    return pipe(
+        path,
+        read_text,
+        path.write_text,
+    )

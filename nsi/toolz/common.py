@@ -251,6 +251,8 @@ def maybe_int(value, default=Nothing()):
     return default
 
 def is_int(value):
+    if type(value) is float:
+        return False
     try:
         int(value)
     except ValueError:
@@ -283,6 +285,7 @@ def is_none(v):
     return maybe(v).is_none()
 def is_some(v):
     return maybe(v).is_some()
+is_not_none = is_some
 
 def flatdict(obj: Union[dict, Any], keys=()):
     '''Flatten a Python dictionary such that nested values are returned
@@ -914,28 +917,4 @@ def map_to_set(func: Callable[[Any], Hashable], iterable):
     for value in iterable:
         result.add(func(value))
     return result
-
-# ----------------------------------------------------------------------
-#
-# Import functions
-#
-# ----------------------------------------------------------------------
-
-def function_from_path(func_path: str):
-    '''Return the function object for a given module path
-
-    '''
-    return pipe(
-        func_path,
-        lambda path: path.rsplit('.', 1),
-        vcall(lambda mod_path, func_name: (
-            importlib.import_module(mod_path), func_name
-        )),
-        vcall(lambda mod, name: (
-            (name, getattr(mod, name))
-            if hasattr(mod, name) else
-            (name, None)
-        )),
-    )
-
 
