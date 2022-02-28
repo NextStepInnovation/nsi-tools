@@ -6,10 +6,12 @@ import string
 import typing as T
 
 import chardet
+import charset_normalizer
 
-from nsi.toolz.filesystem import ensure_paths
-
-from .common import *
+from .common import (
+    pipe, map, filter, curry,
+)
+from .filesystem import ensure_paths
 from .. import logging
 
 
@@ -72,6 +74,14 @@ def get_string_content(path: Path, min=4):
         path,
         strings(min=min),
         '\n'.join,
+    )
+
+@ensure_paths
+def detect_encoding(path: Path):
+    return pipe(
+        path,
+        get_starting_chunk,
+        charset_normalizer.detect,
     )
 
 @curry

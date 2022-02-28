@@ -1,9 +1,9 @@
 '''SMB protocol command-line tools
 '''
-# import gevent.monkey; gevent.monkey.patch_all()
 from pathlib import Path
 import logging
 import pprint
+from weakref import proxy
 
 import click
 
@@ -79,13 +79,11 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
     if ssh:
         getoutput = common.ssh_getoutput(ssh, echo=echo)
 
-    enum_shares = smb.session.enum_shares(
-        domain, username, password, getoutput=getoutput,
-        proxychains=proxychains, dry_run=dry_run,
-    )
-    test_share_perms = smb.session.test_share_perms(
-        domain, username, password, getoutput=getoutput,
-        proxychains=proxychains, dry_run=dry_run,
+    partial_args = smb.session.new_args(
+        domain, username, password, 
+        getoutput=getoutput,
+        proxychains=proxychains,
+        dry_run=dry_run,
     )
 
     output_dir = (
@@ -103,12 +101,12 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
             sorted,
             _.map(lambda s: s.upper()),
             ', '.join,
-        ) if d['perms'] else 'NO ACCESS'
+        ) if d['perms'] else 'NO-ACCESS'
     
     def format_share(d):
         return (
-            f'//{d["ip"]}/{d["name"]}\t'
-            f'{d["type"]}\t{d["desc"]}\t'
+            f'//{d.get("ip")}/{d["name"]}\t'
+            f'{d["type"]}\t{d["comment"]}\t'
             f'{format_perms(d)}'
         )
 
@@ -119,7 +117,7 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
             log.info(f'{output_path} exists... skipping.')
             return 
         try:
-            es_output = enum_shares(ip)
+            es_output = smb.session.enum_shares(partial_args(ip, ''))
         except Exception as error:
             log.exception(
                 f'Problem with enum_shares for {ip}'
@@ -132,7 +130,9 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
             es_output,
             _.map(_.cmerge({'user': username, 'pass': password})),
             _.map(lambda share: (
-                share, test_share_perms(share['ip'], share['name'])
+                share, smb.session.test_share_perms(partial_args(
+                    share['ip'], share['name'],
+                ))
             )),
             _.vmap(lambda share, output: (
                 share, _.maybe_first(output, default={})
@@ -194,7 +194,7 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
 @click.command()
 @click.argument('host')
 @click.argument('share')
-@click.argument('path', required=False)
+@click.argument('path')
 @common.cred_options
 @common.ssh_options
 @click.option(
@@ -217,42 +217,36 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
+@click.option(
+    '--proxychains', is_flag=True,
+    help='Run with proxychains',
+)
+@click.option(
+    '--dry-run', is_flag=True,
+    help="Don't run command",
+)
 def smb_ls(host, path, share, username, password, domain, ssh, max_workers,
-           echo, timeout, loglevel):
+           echo, timeout, loglevel, proxychains, dry_run):
     '''Get 
 
     '''
-    logging.setup_logging(loglevel)
+    logging.setup_logging('debug' if dry_run else loglevel)
 
     echo = echo or loglevel == 'debug'
-
-    # if ippath:
-    #     log.info(f'Reading IPs from path: {ippath}')
-    #     ips = __.get_ips_from_file(ippath)
-    # elif target:
-    #     log.info(f'Reading IP from target: {target}')
-    #     ips = __.ip_to_seq(target)
-    # else:
-    #     log.error('No IP information given')
-    #     raise click.UsageError(
-    #         'No IP information given, provide either'
-    #         ' -i/--ippath or -t/--target'
-    #     )
 
     getoutput = shell.getoutput(echo=echo)
     if ssh:
         getoutput = common.ssh_getoutput(ssh, echo=echo)
 
-    if path:
-        parts = _.pipe(
-            path.split('/'),
-            _.map(lambda p: p if p else '/'),
-        )
-    else:
-        parts = []
+    parts = list(Path(path).parts)
+    if path.endswith('/'):
+        parts[-1] += '/'
 
     def format_file(d):
-        {'raw_error': 'STATUS_ACCESS_DENIED', 'error': {'no_access'}, 'error_line': 'session setup failed: NT_STATUS_ACCESS_DENIED'}
+        {
+            'raw_error': 'STATUS_ACCESS_DENIED', 'error': {'no_access'}, 
+            'error_line': 'session setup failed: NT_STATUS_ACCESS_DENIED',
+        }
         match d:
             case {'name': name, 'type': type, 'size': size, 'dt': dt}:
                 ts = dt.strftime('%Y-%m-%dT%H%M%S')
@@ -267,12 +261,16 @@ def smb_ls(host, path, share, username, password, domain, ssh, max_workers,
                 return (
                     f'ERROR: {raw_error} --> {line}'
                 )
+            case other:
+                log.error(
+                    f'Unhandled file: {other}'
+                )
         return ''
     
     _.pipe(
         smb.session.smbclient_ls(
             domain, username, password, host, share, *parts,
-            getoutput=getoutput, 
+            getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
         ),
         _.map(format_file),
         _.filter(None),
