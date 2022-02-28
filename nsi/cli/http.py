@@ -302,7 +302,7 @@ def nikto_ips(ippath, target, port, ssl, no_ssl, timeout, ssh_user, ssh_host,
         (
             (lambda ips: random.sample(ips, len(ips)))
             if randomize
-            else _.do_nothing
+            else _.noop
         ),
         do(print),
         filter(should_do_nikto),

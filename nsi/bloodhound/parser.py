@@ -80,6 +80,10 @@ def bloodhound_data(data: dict):
     ), do(lambda _: log.info('  .. done.')))
 
 def bloodhound_data_from_paths(paths: T.List[Path]):
+    def get_data(d, type):
+        if type in d:
+            return d[type]
+        return d['data']
     return pipe(
         merge(
             {'computers': [], 'domains': [], 'groups': [],
@@ -87,9 +91,9 @@ def bloodhound_data_from_paths(paths: T.List[Path]):
             pipe(
                 paths,
                 map(parse_json),
-                map(lambda d: (
-                    d['meta']['type'], d[d['meta']['type']]
-                )),
+                error_raise(map(lambda d: (
+                    d['meta']['type'], get_data(d, d['meta']['type'])
+                ))),
                 dict,
             ),
         ),

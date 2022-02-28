@@ -18,5 +18,7 @@ from . import (
     ntlm, 
     secretsdump,
     excel,
+    smb,
+    nmap,
 )
 __version__ = '0.0.1'

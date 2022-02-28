@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 venv=nsi-tools-venv
+sudo apt install -y python3.10-venv
 python3.10 -m venv ${venv}
 . ${venv}/bin/activate
 pip3 install -U pip

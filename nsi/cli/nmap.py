@@ -216,7 +216,7 @@ def get_services_from_json(path):
     with Path(path).expanduser().open() as rfp:
         return _.pipe(
             json.load(rfp),
-            nmap.get_services_from_yaml,
+            nmap.get_services_from_nmap_dict,
         )
             
 @click.command()
@@ -226,21 +226,61 @@ def get_services_from_json(path):
 @click.option(
     '--no-ports', is_flag=True,
 )
+@click.option(
+    '-e', '--exclude-list', type=click.Path(exists=True)
+)
+@click.option(
+    '-i', '--include-list', type=click.Path(exists=True)
+)
 @click.option('--loglevel', default='info')
-def nmap_services(paths, no_ports, loglevel):
-    '''For some number of YAML-encoded NMAP outputs, print out services
-    found
+def nmap_services(paths, no_ports, loglevel, exclude_list, include_list):
+    '''
+    For some number of either JSON-encoded or grep-able nmap NMAP outputs, print
+    out services found
 
     '''
-    # get_services_from_json(paths[0])
+    logging.setup_logging(loglevel)
+
+    exclude_list = pipe(
+        exclude_list,
+        _.get_ips_from_file,
+    ) if exclude_list else []
+
+    include_list = pipe(
+        include_list,
+        _.get_ips_from_file,
+    ) if include_list else []
+
+    @_.ensure_paths
+    def get_services(path: Path):
+        match path:
+            case Path(suffix='.json'):
+                return get_services_from_json(path)
+            case Path(suffix='.gnmap'):
+                return pipe(
+                    nmap.parse_gnmap(path),
+                    _.mapcat(lambda host: [
+                        (
+                            host['ip'],
+                            host['name'],
+                            p['port'],
+                            p['guess'],
+                            p['service'],
+                        )
+                        for p in host['ports']
+                    ]),
+                    tuple,
+                )
+
         
     _.pipe(
         paths,
-        parallel.thread_map(get_services_from_json),
+        parallel.thread_map(get_services),
         _.concat,
         _.sort_by(lambda r: ipaddress.ip_address(r[0])),
+        _.filter(lambda r: r[0] not in exclude_list),
+        _.filter(lambda r: include_list and (r[0] in include_list)),
         _.map('\t'.join),
-
         '\n'.join,
         print
     )

@@ -25,6 +25,52 @@ from . import logging
 
 log = logging.new_log(__name__)
 
+@_.ensure_paths
+def parse_gnmap(path: Path):
+    host_re = _.to_regex(r'Host: (?P<ip>[\d.]+?) \((?P<name>.*?)\)')
+    ports_re = _.to_regex(r'Ports: ')
+    port_re = _.to_regex(
+        r'(?P<port>\d+?)/'
+        r'(?P<state>.+?)/'
+        r'(?P<proto>.+?)/'
+        r'(?P<v0>.*?)/'
+        r'(?P<guess>.*?)/'
+        r'(?P<v1>.*?)/'
+        r'(?P<service>.*?)/'
+        r'(?P<v2>.*?)'
+    )
+    os_re = _.to_regex(r'OS: (?P<os>.*)')
+
+    def get_data(line: str):
+        for part in line.split('\t'):
+            matches = _.juxt(host_re.match, ports_re.match, os_re.match)(part)
+            match matches:
+                case (None, None, None):
+                    continue
+                case (host, None, None):
+                    yield host.groupdict()
+                case (None, ports, None):
+                    yield {
+                        'ports': _.pipe(
+                            port_re.finditer(line),
+                            _.map(lambda m: m.groupdict()),
+                            tuple,
+                        )
+                    }
+                case (None, None, os):
+                    yield os.groupdict()
+            
+    return _.pipe(
+        path,
+        _.slurplines,
+        _.grep('Host: .*?Ports: .*?'),
+        _.map(get_data),
+        _.map(_.merge),
+        _.filter(None),
+        _.map(_.cmerge({'ip': '', 'name': '', 'ports': []})),
+        tuple,
+    )
+
 @_.curry
 def nmap(ip_or_range_or_path, *, ports=None, top_ports=None,
          getoutput=getoutput(echo=False), no_dns=False,
@@ -534,7 +580,7 @@ def get_hosts(nmap):
     elif nhosts > 1:
         yield from nmap['host']
         
-def get_services_from_yaml(nmap):
+def get_services_from_nmap_dict(nmap: dict):
     return _.pipe(
         get_hosts(nmap),
         tuple,

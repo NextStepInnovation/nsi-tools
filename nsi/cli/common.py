@@ -161,7 +161,7 @@ cred_options = _.compose(
         help=('Password with which to authenticate (default: NULL)'),
     ),
     click.option(
-        '-d', '--domain',
+        '-d', '--domain', default='',
         help=('Domain to use when authenticating (default: ".")'),
     ),
 )
