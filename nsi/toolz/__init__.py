@@ -23,6 +23,7 @@ from .text_processing import *
 from .time import *
 from .binary_data import *
 from .dynamic_import import *
+from .urllib import *
 
 from . import (
     common,
@@ -43,6 +44,7 @@ from . import (
     time,
     binary_data,
     dynamic_import,
+    urllib,
 )
 
 __all__ = [
@@ -79,7 +81,7 @@ __all__ = [
     'ensure_paths', 'ensure_paths_curry',
     'is_path', 'newer', 'older', 'binpeek', 'read_text', 'read_bytes',
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'slurpbchunks',
-    'to_paths', 'walk', 'walkmap', 'convert_utf8',
+    'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline',
 
     # common
     'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 'cconcatv',
@@ -89,7 +91,7 @@ __all__ = [
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
     'is_some', 'is_not_none', 'is_str', 'items', 'log_lines', 
-    'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif',
+    'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe',
     'max', 'maybe_first', 'maybe_float', 'maybe_int', 'maybe_last',
     'maybe_max', 'maybe_min', 'maybe_pipe', 'maybe_second', 'min',
     'mini_tb', 'new_log', 'noop', 'replace', 'sc_juxt',
@@ -160,6 +162,9 @@ __all__ = [
     # binary_data
     'is_binary_string', 'is_binary', 'strings', 'detect_encoding',
 
+    # urllib
+    'urlencode', 'urlparse', 'urlsplit', 'urlunparse', 'urlunsplit', 'urljoin',
+    'parse_qs', 'parse_qsl',
 ]
 
 def toolz_imports():

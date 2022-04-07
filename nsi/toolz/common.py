@@ -17,6 +17,7 @@ import chardet
 
 maybe = _maybe
 
+
 try:
     from cytoolz.curried import *
 except ImportError:
@@ -240,6 +241,20 @@ def is_seq(s):
         (not isinstance(s, (str, bytes)))
     )
 is_not_seq = complement(is_seq)
+
+def fmaybe(func):
+    '''Turn a function into a Maybe monad(ish)
+    '''
+    @functools.wraps(func)
+    def maybe_monad(*a, **kw):
+        try:
+            return maybe(func(*a, **kw))
+        except Exception as error:
+            logging.error(
+                f'Exception in {func}:\n\n{str(error)[:1000]}'
+            )
+        return Nothing()
+    return maybe_monad
 
 @curry
 def maybe_int(value, default=Nothing()):

@@ -200,13 +200,25 @@ def read_text(path: Union[str, Path]):
     
 slurp = read_text
 
+@curry
 @ensure_paths
-def slurplines(path: Path, n: int = None):
-    with path.open() as rfp:
+def slurplines(path: Path, n: int = None, **open_kw):
+    with path.open(**open_kw) as rfp:
         for i, line in enumerate(rfp):
             if n is not None and i == n:
                 break
             yield line.rstrip('\n')
+
+
+@curry
+@ensure_paths
+def writeline(path: Path, line: str, **open_kw):
+    if path not in writeline.path_fp:
+        writeline.path_fp[path] = path.open(
+            'a', **open_kw
+        )
+    writeline.path_fp[path].write(f'{line}\n')
+writeline.path_fp = {}
 
 @ensure_paths
 def read_bytes(path: Union[str, Path]):
