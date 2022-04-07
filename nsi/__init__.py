@@ -20,5 +20,6 @@ from . import (
     excel,
     smb,
     nmap,
+    nexpose,
 )
 __version__ = '0.0.1'
