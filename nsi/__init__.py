@@ -21,5 +21,6 @@ from . import (
     smb,
     nmap,
     nexpose,
+    sysvol,
 )
 __version__ = '0.0.1'

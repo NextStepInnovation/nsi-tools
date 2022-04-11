@@ -41,6 +41,7 @@ setup(
         'networkx',
         'paramiko',
         'pillow',
+        'pycryptodome',
         'pymaybe',
         'pymdown-extensions',
         'pyperclip',
