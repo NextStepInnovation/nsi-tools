@@ -2,7 +2,7 @@ from pathlib import Path
 import binascii
 
 import lxml.etree
-from Cypto.Cipher import AES
+from Crypto.Cipher import AES
 
 from . import logging
 from .toolz import *
