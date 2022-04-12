@@ -60,7 +60,7 @@ __all__ = [
     'mapcat', 'maybe', 'memoize', 'merge', 'merge_sorted', 'merge_with',
     'nth', 'operator', 'partial', 'partition', 'partition_all',
     'partitionby', 'peek', 'peekn', 'pipe', 'pluck',
-    'random_sample', 'reduce', 'reduceby', 'remove', 'second',
+    'reduce', 'reduceby', 'remove', 'second',
     'sliding_window', 'sorted', 'tail', 'take', 'take_nth',
     'thread_first', 'thread_last', 'topk', 'unique', 'update_in',
     'valfilter', 'valmap',
@@ -139,7 +139,7 @@ __all__ = [
     'sha1', 'sha256', 'sha512',
 
     # random
-    'random_pw', 'random_sample', 'random_sentence', 'random_str', 'random_user',
+    'random_pw', 'sample', 'random_sentence', 'random_str', 'random_user',
 
     # dictionary
     'cassoc', 'cassoc_in', 'cdissoc', 'cmerge', 'create_key', 

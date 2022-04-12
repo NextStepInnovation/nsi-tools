@@ -17,11 +17,27 @@ import chardet
 
 maybe = _maybe
 
-
-try:
-    from cytoolz.curried import *
-except ImportError:
-    from toolz.curried import *
+# try:
+#     from cytoolz.curried import (
+#         accumulate, apply, assoc, assoc_in, comp,
+#         complement, compose, compose_left, concat, concatv,
+#         cons, count, countby, curry, diff,
+#         dissoc, do, drop, excepts, filter,
+#         first, flip, frequencies, get, get_in,
+#         groupby, identity, interleave, interpose, isdistinct,
+#         isiterable, itemfilter, itemmap, iterate, join,
+#         juxt, keyfilter, keymap, last, map,
+#         mapcat, memoize, merge, merge_sorted, merge_with,
+#         nth, operator, partial, partition, partition_all,
+#         partitionby, peek, peekn, pipe, pluck,
+#         random_sample, reduce, reduceby, remove, second,
+#         sliding_window, sorted, tail, take, take_nth,
+#         thread_first, thread_last, topk, unique, update_in,
+#         valfilter, valmap,
+#     )
+# except ImportError:
+#     from toolz.curried import *
+from toolz.curried import *
 
 dispatch = multipledispatch.dispatch
 
@@ -338,12 +354,28 @@ def wrap_text(width, text, **wrap_kw):
 
 @curry
 def strip(value: str, chars=None):
-    'In-line string strip function'
+    '''In-line string strip function
+
+    Examples:
+
+    >>> pipe('  a  ', strip) == 'a'
+    True
+    >>> pipe('---a----', strip(chars='-')) == 'a'
+    True
+    '''
     return value.strip(chars)
 
 @curry
 def split(value: str, sep: str = None, maxsplit=-1):
-    'In-line string split function'
+    '''In-line string split function
+
+    Examples:
+
+    >>> pipe('a b', split) == ['a', 'b']
+    True
+    >>> pipe('a\tb', split(sep='\t')) == ['a', 'b']
+    True
+    '''
     return value.split(sep, maxsplit)
 
 @curry

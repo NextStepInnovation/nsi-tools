@@ -213,12 +213,12 @@ def slurplines(path: Path, n: int = None, **open_kw):
 @curry
 @ensure_paths
 def writeline(path: Path, line: str, **open_kw):
-    if path not in writeline.path_fp:
-        writeline.path_fp[path] = path.open(
+    if path not in _writeline_path_fp:
+        _writeline_path_fp[path] = path.open(
             'a', **open_kw
         )
-    writeline.path_fp[path].write(f'{line}\n')
-writeline.path_fp = {}
+    _writeline_path_fp[path].write(f'{line}\n')
+_writeline_path_fp = {}
 
 @ensure_paths
 def read_bytes(path: Union[str, Path]):

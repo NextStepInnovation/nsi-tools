@@ -35,8 +35,8 @@ def random_pw(n=16, *, rng=None, pop=string.printable[:64]):
     return ''.join(rng.choice(pop) for _ in range(n))
 
 @curry
-def random_sample(N, seq, *, rng=None):
-    rng = rng or random
-    return rng.sample(tuple(seq), N)
+def sample(k, seq, *, rng=None, seed=None):
+    rng = rng or (random if seed is None else random.Random(seed))
+    return rng.sample(tuple(seq), k)
 
 
