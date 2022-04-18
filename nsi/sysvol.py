@@ -5,7 +5,11 @@ import lxml.etree
 from Crypto.Cipher import AES
 
 from . import logging
-from .toolz import *
+#from .toolz import *
+from .toolz import (
+    ensure_paths, pipe, sort_by, lower, second, replace, to_bytes,
+    walk, b64decode,
+)
 
 log = logging.new_log(__name__)
 
