@@ -2,88 +2,102 @@
 
 '''
 from pathlib import Path
+import math
 
+import pyperclip
 import click
 
 from ..toolz import *
 from .. import logging
 
-from .. import bloodhound
-from .common import ssh_getoutput, ssh_options
+from ..bloodhound.parser import (
+    parse_directory, get_name, get_id, get_email,
+    group_members as _group_members, user_search, 
+    user_groups as _user_groups,
+)
 
 log = logging.new_log(__name__)
 
-bh_list = compose_left(
-    click.command(),
-    click.option(
-        '-i', '--inpath', type=click.Path(exists=True),
-    ),
-    click.option(
-        '-o', '--outpath', type=click.Path(),
-    ),
-    ssh_options,
-    click.option(
-        '--echo', is_flag=True,
-        help=(
-            'Echo the content of the individual commands for'
-            ' debugging purposes'
+def bh_list_command(obj_type: str):
+    return compose_left(
+        click.command(
+            help=(
+                f'List out BloodHound {obj_type[:-1].capitalize()} objects'
+            ),
         ),
-    ),
-    click.option(
-        '-c', '--from-clipboard', is_flag=True,
-    ),
-    click.option(
-        '-C', '--to-clipboard', is_flag=True,
-    ),
-    click.option(
-        '--csv', is_flag=True, help='Output to CSV',
-    ),
-    click.option(
-        '-u', '--user', 
-        help='Get this information for this user name'
-    ),
-    click.option(
-        '--keep-duplicates', is_flag=True, 
-        help='Keep duplicate DNS entries',
-    ),
-    click.option(
-        '--loglevel', default='info',
-        help=('Log output level (default: info)'),
-    ),
+        click.option(
+            '-i', '--inpath', type=click.Path(exists=True),
+            help=(
+                'Path of directory containing SharpHound JSON output'
+            ),
+        ),
+        click.option(
+            '-o', '--outpath', type=click.Path(),
+            help=(
+                'Path to output resulting data'
+            ),
+        ),
+        click.option(
+            '-C', '--to-clipboard', is_flag=True,
+            help='Copy output to clipboard',
+        ),
+        click.option(
+            '--csv', is_flag=True, help=(
+                'Output in CSV format (default is tab-delimited)'
+            ),
+        ),
+        click.option(
+            '--loglevel', default='info',
+            help=('Log output level (default: info)'),
+        ),
+    )(list_objects(get(obj_type)))
+
+@curry
+def list_objects(obj_func, inpath, outpath, to_clipboard, csv, loglevel):
+    logging.setup_logging(loglevel)
+    data = parse_directory(inpath)
+
+    def csv_format(hosts):
+        return csv_rows_to_content(
+            hosts, columns=['name', 'id', 'email'],
+        )
+
+    def print_formatter(hosts):
+        return pipe(
+            hosts,
+            map('\t'.join),
+            # vmap(lambda name, id: f'{name}\t{id}'),
+            '\n'.join,
+        )
+    
+    formatter = print_formatter
+    if csv:
+        formatter = csv_format
+
+    outputter = print
+    if outpath:
+        outputter = Path(outpath).expanduser().write_text
+    elif to_clipboard:
+        outputter = pyperclip.copy
+
+    pipe(
+        obj_func(data),
+        map(lambda c: (get_name(c), get_id(c), get_email(c))),
+        set,
+        sorted,
+        formatter,
+        outputter,
+    )
+
+list_computers = bh_list_command('computers')
+list_users = bh_list_command('users')
+list_groups = bh_list_command('groups')
+
+@click.command(
+    help=(
+        'Get members of all groups with names matching GROUP-REGEX'
+    )
 )
-
-@bh_list
-def bloodhound_list_computers(inpath, outpath, ssh, echo, from_clipboard,
-                              to_clipboard, csv, user, keep_duplicates, 
-                              loglevel):
-    logging.setup_logging(loglevel)
-    bloodhound.parser.list_objects(
-        inpath, outpath, ssh, echo, from_clipboard,
-        to_clipboard, csv, user, keep_duplicates,
-        get('computers'),
-    )
-
-@bh_list
-def bloodhound_list_users(inpath, outpath, ssh, echo, from_clipboard,
-                          to_clipboard, csv, user, keep_duplicates, loglevel):
-    logging.setup_logging(loglevel)
-    bloodhound.parser.list_objects(
-        inpath, outpath, ssh, echo, from_clipboard,
-        to_clipboard, csv, user, keep_duplicates,
-        get('users')
-    )
-
-@bh_list
-def bloodhound_list_groups(inpath, outpath, ssh, echo, from_clipboard,
-                           to_clipboard, csv, user, keep_duplicates, loglevel):
-    logging.setup_logging(loglevel)
-    bloodhound.parser.list_objects(
-        inpath, outpath, ssh, echo, from_clipboard,
-        to_clipboard, csv, user, keep_duplicates,
-        get('groups'),
-    )
-
-@click.command()
 @click.argument('group-regex')
 @click.option(
     '-i', '--inpath', type=click.Path(exists=True),
@@ -107,17 +121,18 @@ def group_members(group_regex, inpath, table, recurse, loglevel):
         f'Searching for group members in {inpath}'
     )
 
-    lut = bloodhound.parser.group_search(
-        inpath, group_regex, recurse=recurse,
-    )
+    max_level = 1
+    if recurse:
+        max_level = math.inf
+
+    lut = _group_members(inpath, group_regex, max_level=max_level)
 
     log.info(
         f'Found {len(lut)} matching group regex "{group_regex}"'
     )
 
-    get_name = bloodhound.parser.get_name
     formatter = curry(
-        (lambda g, n: f'| {g} | {get_name(n)} | {n["type"]} |' )
+        (lambda g, n: f'| `{g}` | `{get_name(n)}` | {n["type"]} |' )
         if table else 
         (lambda g, n: f'{g}\t{get_name(n)}\t{n["type"]}')
     )
@@ -132,6 +147,57 @@ def group_members(group_regex, inpath, table, recurse, loglevel):
             '\n'.join,
         )),
         cconcat(['| Group Name | Member | Object Type |']) if table else noop,
+        '\n'.join,
+        print,
+    )
+
+@click.command(
+    help=(
+        'Get all groups for users with names matching USER-REGEX'
+    )
+)
+@click.argument('user-regex')
+@click.option(
+    '-i', '--inpath', type=click.Path(exists=True),
+    default='./bloodhound',
+)
+@click.option('-T', '--table', is_flag=True, help='Output to markdown table')
+@click.option(
+    '--loglevel', default='info',
+    help=('Log output level (default: info)'),
+)
+def user_groups(user_regex, inpath, table, loglevel):
+    logging.setup_logging(loglevel)
+
+    inpath = Path(inpath).expanduser()
+    log.info(
+        f'Searching for users in {inpath}'
+    )
+
+    users = sorted(user_search(inpath, user_regex))
+    groups = _user_groups(inpath)
+
+    log.info(
+        f'Found {len(users)} users matching regex "{user_regex}"'
+    )
+
+    formatter = curry(
+        (lambda u, g: f'| `{u}` | `{g}` |' )
+        if table else 
+        (lambda u, g: f'{u}\t{g}')
+    )
+
+    pipe(
+        users,
+        map(lambda u: (u, groups.get(u))),
+        filter(second),
+        vmap(lambda uname, gnames: pipe(
+            gnames,
+            sorted,
+            map(formatter(uname)),
+            '\n'.join,
+        )),
+        cconcat(['| User Name | Group Name |']) if table else noop,
         '\n'.join,
         print,
     )

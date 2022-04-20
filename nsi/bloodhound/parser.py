@@ -6,6 +6,7 @@ from datetime import datetime
 import typing as T
 import pprint
 import re
+import math
 
 from ..toolz import *
 from .. import logging
@@ -110,82 +111,75 @@ def parse_directory(path: Union[str, Path]):
         bloodhound_data_from_paths,
     )
     
-@curry
-def lookup_member(object, member: dict):
-    return object.parent.by_id.get(member.get('MemberId'))
+# @curry
+# def lookup_member(object, member: dict):
+#     return object.parent.by_id.get(member.get('MemberId'))
 
-@curry
-def get_members_from_key(key, object):
-    return pipe(
-        object.get(key, []),
-        map(lookup_member(object)),
-        filter(None),
-        tuple,
-    )
+# @curry
+# def get_members_from_key(key, object):
+#     return pipe(
+#         object.get(key, []),
+#         map(lookup_member(object)),
+#         filter(None),
+#         tuple,
+#     )
 
-get_group_members = get_members_from_key('Members')
+# get_group_members = get_members_from_key('Members')
 
-def get_displayname(user: dict):
-    return user['Properties'].get('displayname', '') or ''
+# def get_displayname(user: dict):
+#     return user['Properties'].get('displayname', '') or ''
 
-def get_groups(data: dict, group: dict):
-    for g in data['groups']:
-        for member in get_group_members(g):
-            if get_id(member) == get_id(group):
-                yield group
+# def get_groups(data: dict, group: dict):
+#     for g in data['groups']:
+#         for member in get_group_members(g):
+#             if get_id(member) == get_id(group):
+#                 yield group
 
-get_localadmins = get_members_from_key('LocalAdmins')
+# get_localadmins = get_members_from_key('LocalAdmins')
 
-def get_sessions(computer: T.Dict):
-    pass
+# def get_sessions(computer: T.Dict):
+#     pass
 
-# def get_users(group):
-#     for member in group['members:
-#         if member.is_group:
-#             yield from get_users(member)
-#         elif member.is_user:
-#             yield member
+# def parse_root_path(path: Union[str, Path]):
+#     '''Parse the root data path, i.e. with timestamped subdirectories,
+#     return dictionary with Datetime objects as keys and list of JSON
+#     paths as values
 
-def parse_root_path(path: Union[str, Path]):
-    '''Parse the root data path, i.e. with timestamped subdirectories,
-    return dictionary with Datetime objects as keys and list of JSON
-    paths as values
+#     '''
+#     return pipe(
+#         Path(path).expanduser().glob('*'),
+#         filter(lambda p: p.is_dir() and maybe_dt(p.name)),
+#         mapcat(lambda p: product(
+#             (to_dt(p.name),),
+#             p.glob('*.json')
+#         )),
+#         bakedict(lambda t: t[0], lambda t: t[1]),
+#         valmap(bloodhound_data_from_paths),
+#     )
 
-    '''
-    return pipe(
-        Path(path).expanduser().glob('*'),
-        filter(lambda p: p.is_dir() and maybe_dt(p.name)),
-        mapcat(lambda p: product(
-            (to_dt(p.name),),
-            p.glob('*.json')
-        )),
-        bakedict(lambda t: t[0], lambda t: t[1]),
-        valmap(bloodhound_data_from_paths),
-    )
+# def ingest_time_dependent_data(data: Dict[datetime, Iterable[Path]],
+#                                ingestor: Callable[[datetime, Path],
+#                                                   Tuple[bool, Tuple[str]]], *,
+#                                short_circuit=True):
+#     error_prefix = f'Error ingesting for {ingestor}\n'
 
-def ingest_time_dependent_data(data: Dict[datetime, Iterable[Path]],
-                               ingestor: Callable[[datetime, Path],
-                                                  Tuple[bool, Tuple[str]]], *,
-                               short_circuit=True):
-    error_prefix = f'Error ingesting for {ingestor}\n'
-
-    def log_errors(errors):
-        return pipe(
-            errors,
-            map(lambda e: f'- {e}'),
-            '\n'.join,
-            lambda estr: error_prefix + estr,
-            log.error,
-        )
+#     def log_errors(errors):
+#         return pipe(
+#             errors,
+#             map(lambda e: f'- {e}'),
+#             '\n'.join,
+#             lambda estr: error_prefix + estr,
+#             log.error,
+#         )
     
-    for dt, paths in data.items():
-        for p in paths:
-            success, errors = ingestor(dt, p)
-            if not success:
-                log_errors(errors)
-                if short_circuit:
-                    return False
-    return True
+#     for dt, paths in data.items():
+#         for p in paths:
+#             success, errors = ingestor(dt, p)
+#             if not success:
+#                 log_errors(errors)
+#                 if short_circuit:
+#                     return False
+#     return True
 
 def get_names(objects):
     return pipe(
@@ -201,114 +195,136 @@ get_computer_names = compose_left(
     get_names,
 )
 
+@memoize
+@ensure_paths
+def primary_groups(path: Path):
+    data = parse_directory(path)
+    return pipe(
+        concatv(data['users'], data['computers']),
+        filter(lambda n: n.get('PrimaryGroupSID')),
+        map(lambda n: (
+            pipe(
+                data['by_id'][n['PrimaryGroupSID']],
+                get_name,
+            ), n
+        )),
+        groupby(first),
+        valmap(map_t(second)),
+    )
+
 @curry
 @ensure_paths
-def get_users(path: Path, node: dict, *, recurse: bool=False, level: int = 0):
+def get_members(path: Path, node: dict, *, level: int=0, 
+                max_level: int=math.inf):
     data = parse_directory(path)
+    prim_groups = primary_groups(path)
     match node:
         case {'type': 'groups'} as group:
-            if not recurse and level > 0:
-                yield group
-            else:
+            if level < max_level:
                 yield from pipe(
-                    group['Members'],
+                    concatv(
+                        group['Members'],
+                        prim_groups.get(get_name(group), [])
+                    ),
                     map(get_id),
                     map(data['by_id'].get),
                     filter(None),
-                    map(get_users(path, recurse=recurse, level=level + 1)),
+                    map(get_members(
+                        path, 
+                        level=level+1, 
+                        max_level=max_level,
+                    )),
                     concat,
                 )
+            else:
+                yield group
         case {'type': 'computers'} as computer:
             yield computer
         case {'type': 'users'} as user:
             yield user
 
-
 @curry
 @ensure_paths
-def group_members(path: Path, group_name: str, *, recurse: bool = False):
+def object_search(obj_type: str, path: Path, obj_re: str):
+    isearch = lambda s: bool(to_regex(obj_re, re.I).search(s))
     data = parse_directory(path)
 
     return pipe(
-        data['by_name'][group_name],
-        get_users(path, recurse=recurse),
-        filter(None),
-        unique(key=get_id),
+        data[obj_type],
+        filter(compose_left(get_name, isearch, bool)),
         tuple,
-
+        map(lambda obj: (get_name(obj), obj)),
+        dict
     )
+
+user_search = object_search('users')
+group_search = object_search('groups')
+computer_search = object_search('computers')
 
 @curry
 @ensure_paths
-def group_search(path: Path, group_re: str, *, recurse=False):
-    data = parse_directory(path)
-    groups = pipe(
-        data['groups'],
-        map(get_name),
-        igrept(group_re),
+def object_members(obj_type: str, path: Path, obj_re: str, *, 
+                   max_level: int=math.inf):
+    log.info(
+        (obj_type, path, obj_re, max_level)
     )
     return pipe(
-        groups,
-        map(lambda gname: (
-            gname, 
-            group_members(path, gname, recurse=recurse),
+        object_search(obj_type, path, obj_re),
+        valmap(lambda node: get_members(
+            path, node, max_level=max_level,
         )),
-        dict,
+        valmap(unique(key=get_name)),
+        valmap(tuple),
     )
+
+group_members = object_members('groups')
+
+def user_groups(path: Path):
+    return pipe(
+        group_members(path, '.*'),
+        valmap(filter(lambda n: n['type'] == 'users')),
+        valmap(map(get_name)),
+        items,
+        vmapcat(lambda g, users: [(u, g) for u in users]),
+        groupby(first),
+        valmap(map_t(second)),
+    )
+
+# @curry
+# @ensure_paths
+# def group_members(path: Path, group_name: str, *, recurse: bool = False):
+#     data = parse_directory(path)
+
+#     return pipe(
+#         data['by_name'][group_name],
+#         get_members(path, recurse=recurse),
+#         filter(None),
+#         unique(key=get_id),
+#         tuple,
+
+#     )
+
+# @curry
+# @ensure_paths
+# def group_search(path: Path, group_re: str, *, recurse=False):
+#     data = parse_directory(path)
+#     groups = pipe(
+#         data['groups'],
+#         map(get_name),
+#         igrept(group_re),
+#     )
+#     return pipe(
+#         groups,
+#         map(lambda gname: (
+#             gname, 
+#             group_members(path, gname, recurse=recurse),
+#         )),
+#         dict,
+#     )
 
 group_search_names = compose_left(
     group_search,
     valmap(map_t(get_name)),
 )
 
-
-def list_objects(inpath, outpath, ssh, echo, from_clipboard,
-                 to_clipboard, csv, user, keep_duplicates, obj_func):
-    data = parse_directory(inpath)
-
-    if user:
-        user = pipe(
-            data.users,
-            filter(lambda o: re.search(user, o.name, re.I)),
-            maybe_first,
-        )
-        if not user:
-            log.error(f'No user could be found with name regex: {user}')
-            raise AttributeError(
-                f'No user could be found with name regex: {user}'
-            )
-
-    @curry
-    def object_for_user(user, objects):
-        pass
-
-    def csv_format(hosts):
-        return csv_rows_to_content(
-            hosts, columns=['name', 'id', 'email'],
-        )
-
-    def print_formatter(hosts):
-        return pipe(
-            hosts,
-            map('\t'.join),
-            # vmap(lambda name, id: f'{name}\t{id}'),
-            '\n'.join,
-        )
-    
-    formatter = print_formatter
-    if csv:
-        formatter = csv_format
-
-    outputter = print
-    if outpath:
-        outputter = Path(outpath).expanduser().write_text
-
-    pipe(
-        obj_func(data),
-        map(lambda c: (get_name(c), get_id(c), get_email(c))),
-        set,
-        sorted,
-        formatter,
-        outputter,
-    )
 
