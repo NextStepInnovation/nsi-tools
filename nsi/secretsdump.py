@@ -20,7 +20,6 @@ def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None,
         keymap(replace('_', '-')),
         keymap(lambda k: f'-{k}'),
         valmap(lambda v: '' if v is True else to_str(v)),
-        do_info(log),
         items,
         map(' '.join),
         ' '.join,
@@ -33,7 +32,7 @@ def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None,
     command = (
         f"{secretsdump_exec} -hashes {hashes} {options} '{user}@{ip}'"
         if hashes else
-        f"{secretsdump_exec} {options} '{user}:{password}@{ip}'"
+        f"{secretsdump_exec} {options} '{user}':'{password}'@'{ip}'"
     )
 
     log.info(f'secretsdump command: {command}')
