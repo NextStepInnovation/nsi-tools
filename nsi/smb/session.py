@@ -92,7 +92,7 @@ class SmbClientArgs:
         domain = f'{self.domain}\\' if self.domain else ''
         command_parts = [
             ("proxychains -q" if self.proxychains else ""),
-            (f"smbclient //{self.target}/'{self.share}'"
+            (f'smbclient //{self.target}/"{self.share}"'
              f" -U '{domain}{self.username}'%'{self.password}'"),
             f"-t {timeout}" if timeout else '',
             f"-c '{self.prep_command(command)}'" if command else '',
@@ -329,10 +329,16 @@ def smb_results(output: SmbOutput):
 @curry
 def smbclient_ls(args: SmbClientArgs, path: Path, **repl_args):
     command = f'ls "{path}"'
-    return pipe(
-        smbclient(args, command, **repl_args),
-        smb_results,
-    )
+    try:
+        return pipe(
+            smbclient(args, command, **repl_args),
+            smb_results,
+        )
+    except Exception as exc:
+        log.exception(
+            f'Error on smbclient_ls:\n   Args: {pprint.pformat(args)}'
+        )
+        raise exc
 
 @curry
 @ensure_paths
