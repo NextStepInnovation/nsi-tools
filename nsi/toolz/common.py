@@ -10,6 +10,7 @@ import textwrap
 import inspect
 import importlib
 import multipledispatch
+import io
 from typing import *
 
 from pymaybe import maybe as _maybe, Nothing
@@ -341,6 +342,22 @@ def as_tuple(func):
 
 # ---------------------------
 # String in-line functions
+# ---------------------------
+
+streamable = NewType('streamable', (str, bytes, io.IOBase))
+
+def to_io(value: streamable):
+    match value:
+        case io_obj if isinstance(io_obj, io.IOBase):
+            return io_obj
+        case value_b if isinstance(value_b, bytes):
+            return io.BytesIO(value_b)
+        case value_s if isinstance(value_s, str):
+            return io.StringIO(value_s)
+        case _:
+            raise IOError(
+                f'Cannot deal with type {type(value)}'
+            )
 
 def help_text(s):
     return textwrap.shorten(s, 1e300)
@@ -379,9 +396,18 @@ def split(value: str, sep: str = None, maxsplit=-1):
     return value.split(sep, maxsplit)
 
 @curry
-def splitlines(value: str, keepends=False):
-    'In-line string splitlines function'
-    return value.splitlines(keepends=keepends)
+def splitlines(value: streamable, keepends=False):
+    '''
+    In-line string splitlines function. Stream-safe.
+    '''
+    for line in to_io(value):
+        if keepends:
+            yield line
+        else:
+            if line.endswith('\n'):
+                yield line[:-1]
+            else:
+                yield line
 
 def lower(value: str):
     'In-line string lower function'

@@ -11,7 +11,8 @@ from ..toolz import *
 from .. import logging
 
 from ..bloodhound.parser import (
-    parse_directory, get_name, get_id, get_email,
+    parse_directory, get_name, get_id, get_email, is_admin,
+    get_description, get_displayname, is_enabled,
     group_members as _group_members, user_search, 
     user_groups as _user_groups,
 )
@@ -38,6 +39,18 @@ def bh_list_command(obj_type: str):
             ),
         ),
         click.option(
+            '-a', '--admin', is_flag=True,
+            help = '''
+            List only objects with admincount: True
+            '''
+        ),
+        click.option(
+            '-e', '--enabled', is_flag=True,
+            help = '''
+            List only enabled objects
+            '''
+        ),
+        click.option(
             '-C', '--to-clipboard', is_flag=True,
             help='Copy output to clipboard',
         ),
@@ -53,13 +66,16 @@ def bh_list_command(obj_type: str):
     )(list_objects(get(obj_type)))
 
 @curry
-def list_objects(obj_func, inpath, outpath, to_clipboard, csv, loglevel):
+def list_objects(obj_func, inpath, outpath, admin, enabled, to_clipboard, csv, 
+                 loglevel):
     logging.setup_logging(loglevel)
     data = parse_directory(inpath)
 
     def csv_format(hosts):
         return csv_rows_to_content(
-            hosts, columns=['name', 'id', 'email'],
+            hosts, columns=[
+                'name', 'displayname', 'description', 'email', 'id', 'enabled',
+            ],
         )
 
     def print_formatter(hosts):
@@ -82,9 +98,18 @@ def list_objects(obj_func, inpath, outpath, to_clipboard, csv, loglevel):
 
     pipe(
         obj_func(data),
-        map(lambda c: (get_name(c), get_id(c), get_email(c))),
+        filter(is_admin if admin else (lambda *a: True)),
+        filter(is_enabled if enabled else (lambda *a: True)),
+        map(lambda c: (
+            get_name(c), 
+            get_displayname(c),
+            get_description(c),
+            get_email(c), 
+            get_id(c), 
+        ) + ((is_enabled(c),) if not enabled else ()) ),
         set,
         sorted,
+        map(map_t(str)),
         formatter,
         outputter,
     )

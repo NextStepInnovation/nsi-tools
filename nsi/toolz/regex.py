@@ -3,7 +3,7 @@ from typing import Union, Sequence, Iterable, Callable, Any
 
 import re as _re
 import regex as re
-from pymaybe import maybe, Nothing
+import pymaybe
 from toolz.functoolz import complement
 
 from .common import *
@@ -27,54 +27,144 @@ def to_regex(obj: Regex, flags=0):
             return regex
     return re.compile(obj, flags)
 
-def re_search(regex: Regex, flags=0):
-    '''Given a regex (str or re.Pattern), and a string, return the match object 
-    from a re.search
+@curry
+def re_search(regex: Regex, value: str, flags=0) -> pymaybe.Maybe:
     '''
-    regex = to_regex(regex, flags)
-    def searcher(string):
-        return maybe(regex.search(string))
-    return searcher
+    Given a regex (str or re.Pattern), and a string, return the PyMaybe-wrapped
+    match object from a re.search
 
-def groupdict(regex: Regex, flags=0, keep_match=False):
+    Examples:
+
+    >>> pipe(
+    ...     'hello world',
+    ...     re_search(
+    ...         r'h(?P<a>.*?) w(?P<b>.*)'
+    ...     ),
+    ...     lambda m: (type(m), m.groupdict()),
+    ... ) == (pymaybe.Something, {'a': 'ello', 'b': 'orld'})
+    True
+    >>> pipe(
+    ...     'HELLO WORLD',
+    ...     re_search(
+    ...         r'h(?P<a>.*?) w(?P<b>.*)'
+    ...     ),
+    ...     lambda m: (type(m), m.groupdict()),
+    ... ) == (pymaybe.Nothing, pymaybe.Nothing())
+    True
+    >>> pipe(
+    ...     'HELLO WORLD',
+    ...     re_search(
+    ...         r'h(?P<a>.*?) w(?P<b>.*)', flags=re.I
+    ...     ),
+    ...     lambda m: (type(m), m.groupdict()),
+    ... ) == (pymaybe.Something, {'a': 'ELLO', 'b': 'ORLD'})
+    True
+    '''
+
+    regex = to_regex(regex, flags)
+    return pymaybe.maybe(regex.search(value))
+    # regex = to_regex(regex, flags)
+    # def searcher(string):
+    #     return pymaybe.maybe(regex.search(string))
+    # return searcher
+
+@curry
+def groupdict(regex: Regex, value: str, flags=0, keep_match=False) -> dict:
     '''Given a regex (str or re.Pattern) with named expressions and a string,
     return the groupdict of the match object or empty dict
+
+    Args: 
+
+      regex(Union[str, regex]): regular expression with named expressions
+
+      value(str): string to search
+
+      flags(int): regex flags to use
+
+      keep_match(bool): whether or not to keep the match object in the returned
+        dictionary under the key "__match__"
+
+    Examples:
+
+    >>> pipe(
+    ...     'hello world',
+    ...     groupdict(
+    ...         r'h(?P<a>.*?) w(?P<b>.*)',
+    ...     ),
+    ... ) == {'a': 'ello', 'b': 'orld'}
+    True
+    >>> out = pipe(
+    ...     'hello world',
+    ...     groupdict(
+    ...         r'h(?P<a>.*?) w(?P<b>.*)', keep_match=True,
+    ...     ),
+    ... )
+    >>> out['__match__'].groups() == ('ello', 'orld')
+    True
     '''
-    def groupdicter(string):
-        return pipe(
-            string,
-            re_search(regex, flags),
-            lambda m: merge(
-                m.groupdict().or_else({}),
-                {'__match__': m} if (keep_match and m) else {},
-            ),
-        )
-    return groupdicter
+    return pipe(
+        value,
+        re_search(regex, flags=flags),
+        lambda m: merge(
+            m.groupdict().or_else({}),
+            {'__match__': m} if (keep_match and m.or_else(False)) else {},
+        ),
+    )
+    # def groupdicter(string: str):
+    #     return pipe(
+    #         string,
+    #         re_search(regex, flags),
+    #         lambda m: merge(
+    #             m.groupdict().or_else({}),
+    #             {'__match__': m} if (keep_match and m) else {},
+    #         ),
+    #     )
+    # return groupdicter
 
 @curry
 def groupdicts(regex: Regex, iterable, keep_match=False, flags=0):
-    '''Given a regex (str or re.Pattern), and iterable of strings,
-    produce single dictionary of all groupdicts of matches
     '''
-    regex = to_regex(regex, flags)
+    Given a regex (str or re.Pattern), and iterable of strings, produce a tuple
+    of all groupdicts of matches
+
+    Examples:
+
+    >>> pipe(
+    ...     ['hello world', 'jfghfjhgjf', 'hQWER wZXCV'],
+    ...     groupdicts(
+    ...         r'h(?P<a>.*?) w(?P<b>.*)',
+    ...     ),
+    ...     tuple,
+    ... ) == ({'a': 'ello', 'b': 'orld'}, {'a': 'QWER', 'b': 'ZXCV'})
+    True
+    '''
+    regex = to_regex(regex, flags=flags)
     return pipe(
         iterable,
-        map(groupdict(regex, flags=flags, keep_match=keep_match)),
+        map(groupdict(regex, keep_match=keep_match)),
         filter(None),
-        tuple,
     )
 
 @curry
 def groupdicts_from_regexes(regexes: Sequence[re.Pattern],
-                            iterable: Iterable[str], **kw):
-    '''Given a sequence of regexes and an iterable of strings,
-    produce a list of merged groupdicts for those regexes
+                            iterable: Iterable[str], *, 
+                            keep_match=False, flags=0):
     '''
+    Given a sequence of regexes and an iterable of strings, produce a list of
+    merged groupdicts for those regexes
+    '''
+    regexer = compose_left(
+        juxt(*[
+            groupdict(r, keep_match=keep_match, flags=flags)
+            for r in regexes
+        ]),
+        merge,
+    )
     return pipe(
         iterable,
-        juxt(*[compose(list, groupdicts(r, **kw)) for r in regexes]),
-        concat,
-    )
+        map(regexer),
+        filter(None),
+    )    
 
 # ---------------------------
 #
@@ -86,7 +176,7 @@ _get = get
 @curry
 def grep(raw_regex: Regex, iterable: Iterable[Union[str, Sequence, dict]],
          exclude: bool = False, get: Union[Callable, Any] = None, 
-         to_tuple: bool = False, **re_kw):
+         to_tuple: bool = False, *, flags=0):
     '''Given a regular expression (either str or compiled regex), filter
     iterable of strings (or indexable) by that regex
 
@@ -111,22 +201,25 @@ def grep(raw_regex: Regex, iterable: Iterable[Union[str, Sequence, dict]],
     ('abc', 'aec')
 
     >>> pipe(
-    ...   [{'a': 'abc'}, {'a': 'aec'}, {'a': 'qwer'}], 
+    ...   [{'a': 'abc', 'b': 1}, {'a': 'aec'}, {'a': 'qwer'}], 
     ...   grep(r'^a.c$', get='a'), 
     ...   tuple
     ... )
-    ({'a': 'abc'}, {'a': 'aec'})
+    ({'a': 'abc', 'b': 1}, {'a': 'aec'})
 
     '''
-    if isinstance(raw_regex, _re.Pattern):
-        regex = raw_regex
-    else:
-        regex = re.compile(raw_regex, **re_kw)
+    # regex = to_regex(raw_regex, **re_kw)
+    # if isinstance(raw_regex, _re.Pattern):
+    #     regex = raw_regex
+    # else:
+    #     regex = re.compile(raw_regex, **re_kw)
     if not callable(get):
         get = _get(get) if get else noop
     search = compose_left(
         get,
-        regex.search,
+        to_regex(raw_regex, flags).search,
+        # re_search(raw_regex, **re_kw),
+        # regex.search,
         complement(bool) if exclude else bool,
     )
     return pipe(
@@ -165,7 +258,7 @@ def grepvitems(raw_regex, iterable, **kw):
     )
 
 @curry
-def match_d(match: dict, d: dict, *, default=Nothing()):
+def match_d(match: dict, d: dict, *, default=pymaybe.Nothing()):
     '''Given a match dictionary {key: regex}, return merged groupdicts
     only if all regexes are in the values (i.e. via regex.search) for
     all keys. Otherwise return default=Nothing().
@@ -195,13 +288,13 @@ def match_d(match: dict, d: dict, *, default=Nothing()):
     ...   {'a': 'hello'},
     ...   match_d({'a': r'h(?P<v0>.*)', 'b': r'w(?P<v1>.*)'}),
     ... )
-    >>> matched == Nothing()
+    >>> matched == pymaybe.Nothing()
     True
     >>> matched = pipe(         # regexes don't match
     ...   {'a': 'hello', 'b': 'world'},
     ...   match_d({'a': r'ckjv(?P<v0>.*)', 'b': r'dkslfjl(?P<v1>.*)'}),
     ... )
-    >>> matched == Nothing()
+    >>> matched == pymaybe.Nothing()
     True
 
     '''

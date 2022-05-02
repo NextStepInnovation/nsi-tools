@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Union
-from datetime import datetime as _datetime
+from datetime import datetime as _datetime, date as _date
 
 from pymaybe import Nothing
 import dateutil.parser
@@ -22,15 +22,15 @@ def maybe_dt(ts, *, default=Nothing()):
     Null
 
     '''
-    if isinstance(ts, _datetime):
+    if isinstance(ts, (_datetime, _date)):
         return ts
 
-    if ts is None:
+    if not bool(ts):
         return default
 
     try:
-        return dateutil.parser.parse(ts)
-    except ValueError:
+        return parse_dt(ts)
+    except (ValueError, TypeError):
         return default
 
 def parse_dt(ts: str, local=False):
@@ -48,7 +48,7 @@ def ctime_as_dt(path: Union[str, Path]):
 dt_ctime = ctime_as_dt
 
 @curry
-def to_dt(value, default=_datetime.fromtimestamp(0)):
+def to_dt(value, default=_datetime.fromtimestamp(0), **du_kw):
     '''Attempt to parse the given value as a datetime object, otherwise
     return default=epoch
 
@@ -58,7 +58,10 @@ def to_dt(value, default=_datetime.fromtimestamp(0)):
 
     '''
     try_except = [
-        (lambda v: dateutil.parser.parse(v), (ValueError, TypeError)),
+        (lambda v: dateutil.parser.parse(v, **du_kw), 
+         (ValueError, TypeError)),
+        (lambda v: dateutil.parser.parse(v, dayfirst=True), 
+         (ValueError, TypeError)),
         (lambda v: _datetime.strptime(v, "%Y%m%dT%H%M%S%f"),
          (ValueError, TypeError)),
     ]

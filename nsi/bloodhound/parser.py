@@ -51,8 +51,16 @@ def get_id(d):
         f'Could not find ID for {d_str}'
     )
 
-def get_email(d):
-    return d.get('Properties', {}).get('email') or ''
+@curry
+def get_property(name: str, node: dict, default: T.Any = None):
+    return node.get('Properties', {}).get(name) or default
+
+is_admin = get_property('admincount', default=False)
+is_enabled = get_property('enabled', default=False)
+get_email = get_property('email', default='')
+get_displayname = get_property('displayname', default='')
+get_description = get_property('description', default='')
+
 
 def bloodhound_data(data: dict):
     log.info(

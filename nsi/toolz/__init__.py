@@ -78,7 +78,7 @@ __all__ = [
 
     # filesystem
     'POS_PARAM_KINDS', 'backup_path', 'check_parents_for_file', 
-    'ensure_paths', 'ensure_paths_curry',
+    'ensure_paths', 'ensure_paths_curry', 'glob',
     'is_path', 'newer', 'older', 'binpeek', 'read_text', 'read_bytes',
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'slurpbchunks',
     'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline',
@@ -97,7 +97,7 @@ __all__ = [
     'mini_tb', 'new_log', 'noop', 'replace', 'sc_juxt',
     'select', 'seti', 'seti_t', 'short_circuit', 'shuffled',
     'sort_by', 'sorted', 'split', 'splitlines', 'starmap',
-    'strip', 'to_bytes', 'to_str', 'upper', 'val',
+    'strip', 'to_io', 'to_bytes', 'to_str', 'upper', 'val',
     'vcall', 'vcallif', 'vdo', 'vfilter', 'vfind',
     'vgroupby', 'vindex', 'vitemmap', 'vkeymap', 'vmap',
     'vmapcat', 'vmapdo', 'vmapif', 'vseti', 'vseti_t',
@@ -155,7 +155,7 @@ __all__ = [
     'get_networks_from_content', 'get_networks_from_file',
     'get_networks_from_lines', 'get_slash', 'get_slash_from_mask', 'in_ip_range', 
     'ip_only_re', 'ip_re', 'ip_relaxed_re', 'ip_to_seq', 'ip_tuple', 
-    'is_comma_sep_ip', 'is_interface',
+    'is_comma_sep_ip', 'is_interface', 'to_ipv4',
     'is_ip', 'is_ip_range', 'is_ipv4', 'is_network', 
     'sort_ips', 'sortips', 'unzpad', 'zpad',
 

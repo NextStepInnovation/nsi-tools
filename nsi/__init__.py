@@ -22,5 +22,6 @@ from . import (
     nmap,
     nexpose,
     sysvol,
+    responder,
 )
 __version__ = '0.0.1'

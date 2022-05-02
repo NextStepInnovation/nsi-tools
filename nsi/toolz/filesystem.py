@@ -124,6 +124,10 @@ ensure_paths_curry = compose(
     ensure_paths,
 )
 
+@ensure_paths_curry
+def glob(glob_expr: str, path: Path):
+    return path.glob(glob_expr)
+
 @ensure_paths
 def walk(path: Path):
     '''Return os.walk(path) as sequence of Path objects

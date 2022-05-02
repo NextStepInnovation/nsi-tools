@@ -44,7 +44,19 @@ ip_only_re = re.compile(f'^{ip_re.pattern}$')
 #         r"^   IPv6 Address. . . . . . . . . . . : (?P<inet6>[ABCDEFabcdef\d\:\%]+)",
 #         r"^\s+Default Gateway . . . . . . . . . : (?P<default_gateway>[^\s\(]+)",
 #     ]
-    
+
+def to_ipv4(ip: str):
+    try:
+        ip_obj = ip_address(ip)
+        ipv4 = ip_obj.ipv4_mapped
+        if ipv4:
+            return str(ipv4)
+    except ValueError:
+        pass
+    match = ip_re.search(ip)
+    if match:
+        return match.group()
+    return ip
 
 def current_ip(ip_version):
     '''Returns the IP address (for a given version) of the interface where
