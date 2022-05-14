@@ -40,7 +40,7 @@ def resolve_host(ip, *, dns_server=None,
     log.debug(f'Command: {command}')
     return _.pipe(
         getoutput(command).splitlines(),
-        _.groupdicts_from_regexes(host_regexes),
+        _.groupdicts_from_regexes(host_regexes, keep_match=True),
         _.map(get_ip),
     )
 

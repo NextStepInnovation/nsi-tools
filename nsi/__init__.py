@@ -19,6 +19,7 @@ from . import (
     secretsdump,
     excel,
     smb,
+    dns,
     nmap,
     nexpose,
     sysvol,
