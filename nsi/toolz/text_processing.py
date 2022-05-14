@@ -1,4 +1,5 @@
 from typing import Union, Iterable
+import re
 
 import pyperclip
 
@@ -137,3 +138,5 @@ def html_list(items):
         ''.join
     )
 
+def noansi(text: str):
+    return re.sub(r'\x1b\[[0-9;]*m', '', text)

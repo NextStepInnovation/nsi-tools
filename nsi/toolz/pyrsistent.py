@@ -1,4 +1,5 @@
 import functools
+from pathlib import Path
 
 import pymaybe
 from pyrsistent import pmap, pvector
@@ -66,6 +67,8 @@ def no_pyrsistent(obj):
             )
         case seq if is_seq(seq):
             return pipe(seq, map(no_pyrsistent), tuple)
+        case path if isinstance(path, Path):
+            return str(path)
         case pymaybe.Nothing():
             return None
 

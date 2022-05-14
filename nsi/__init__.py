@@ -23,5 +23,7 @@ from . import (
     nexpose,
     sysvol,
     responder,
+    filesystem,
+    grep,
 )
 __version__ = '0.0.1'

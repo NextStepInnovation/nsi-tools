@@ -25,6 +25,8 @@ def maybe_json(response: requests.Response, *, default=Nothing()):
 @curry
 @functools.wraps(json.dumps)
 def json_dumps(obj, **kw):
+    if 'default' not in kw:
+        kw['default'] = str
     return json.dumps(obj, **kw)
 
 @curry

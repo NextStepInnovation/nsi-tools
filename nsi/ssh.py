@@ -18,7 +18,8 @@ def shorten(s):
     return s
 
 @curry
-def getoutput(hostname, command, echo=False, sudo=False, **ssh_kw):
+def getoutput(hostname, command, echo=False, sudo=False, dry_run: bool = False, 
+              **ssh_kw):
     '''subprocess.getoutput equivalent over SSH
 
     Relies on public-key authentication currently
@@ -27,6 +28,8 @@ def getoutput(hostname, command, echo=False, sudo=False, **ssh_kw):
       command (str): command to execute over SSH
     
       echo (bool=False): echo command progress to stdout
+
+      dry_run (bool=False): Don't run the command
     
       **ssh_kw: keyword args for paramiko.SSHClient
 

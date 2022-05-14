@@ -8,6 +8,7 @@ import builtins
 import collections
 import textwrap
 import inspect
+import statistics
 import importlib
 import multipledispatch
 import io
@@ -312,6 +313,11 @@ def is_float(value):
     except TypeError:
         return False
     return True
+
+def is_numeric(value):
+    if is_float(value) or is_int(value):
+        return True
+    return False
 
 def is_none(v):
     return maybe(v).is_none()
@@ -826,6 +832,36 @@ def maybe_min(iterable, *, default=Nothing(), **kw):
     try:
         return min(iterable, **kw)
     except ValueError:
+        return default
+
+@curry
+def maybe_mean(iterable, *, default=Nothing(), **kw):
+    '''Return mean of iterable or (if empty) return Nothing()
+
+    '''
+    try:
+        return statistics.mean(iterable, **kw)
+    except statistics.StatisticsError:
+        return default
+
+@curry
+def maybe_median(iterable, *, default=Nothing(), **kw):
+    '''Return median of iterable or (if empty) return Nothing()
+
+    '''
+    try:
+        return statistics.median(iterable, **kw)
+    except statistics.StatisticsError:
+        return default
+
+@curry
+def maybe_mode(iterable, *, default=Nothing(), **kw):
+    '''Return mode of iterable or (if empty) return Nothing()
+
+    '''
+    try:
+        return statistics.mode(iterable, **kw)
+    except statistics.StatisticsError:
         return default
 
 @curry
