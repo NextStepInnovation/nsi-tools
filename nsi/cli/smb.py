@@ -75,9 +75,9 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
     if proxychains:
         log.info('Using proxychains...')
 
-    getoutput = shell.getoutput(echo=echo)
+    getoutput = shell.getoutput(echo=echo, dry_run=dry_run)
     if ssh:
-        getoutput = common.ssh_getoutput(ssh, echo=echo)
+        getoutput = common.ssh_getoutput(ssh, echo=echo, dry_run=dry_run)
 
     partial_args = smb.session.new_args(
         domain, username, password, 

@@ -3,7 +3,9 @@ from pathlib import Path
 import inspect
 import functools
 import tempfile # noqa
-from typing import *
+import typing as T
+from datetime import datetime
+import functools
 
 from pymaybe import Nothing
 import chardet
@@ -12,9 +14,10 @@ from toolz.functoolz import compose_left, compose
 
 from .common import (
     pipe, call, concatv, vmapcat, curry, map, filter,
-    new_log, splitlines,
+    new_log, splitlines, merge, memoize, deref,
 )
-from .time import ctime, dt_ctime
+from .time import maybe_dt
+from .. import shell
 
 log = new_log(__name__)
 
@@ -36,23 +39,9 @@ def check_parents_for_file(name, start_dir=Path('.'), *, default=Nothing()):
 def to_paths(*paths):
     return pipe(paths, map(Path), tuple)
 
-@curry
-def newer(path: Union[str, Path], test: Union[str, Path]):
-    '''Is the path newer than the test path?
-
-    '''
-    return ctime(path) > ctime(test)
-
-@curry
-def older(path: Union[str, Path], test: Union[str, Path]):
-    '''Is the path older than the test path?
-
-    '''
-    return ctime(path) < ctime(test)
-
 def is_path_type(t):
     return t in {
-        Union[str, Path], Path
+        T.Union[str, Path], Path
     }
 
 def is_path(obj):
@@ -77,7 +66,7 @@ def ensure_paths(func, *, expanduser: bool=True):
     >>> from pathlib import Path
     >>> from typing import *
     >>> @ensure_paths
-    ... def f(a: Union[str, Path]):
+    ... def f(a: T.Union[str, Path]):
     ...     print(a.stem)
     ...     print(a.suffix)
     ...
@@ -169,7 +158,7 @@ def walkmap(func, root):
 
 
 @ensure_paths
-def read_text(path: Union[str, Path]):
+def read_text(path: T.Union[str, Path]):
     '''Read contents of file as str
 
     Examples:
@@ -225,7 +214,7 @@ def writeline(path: Path, line: str, **open_kw):
 _writeline_path_fp = {}
 
 @ensure_paths
-def read_bytes(path: Union[str, Path]):
+def read_bytes(path: T.Union[str, Path]):
     '''Read contents of file as bytes
 
     Examples:
@@ -262,10 +251,42 @@ def binpeek(nbytes: int, path: Path):
     with path.open('rb') as rfp:
         return rfp.read(nbytes)
 
+@functools.lru_cache
+@ensure_paths
+def stat(path):
+    return path.stat()
+
+ctime = compose_left(
+    stat, deref('st_ctime'), datetime.fromtimestamp,
+)
+mtime = compose_left(
+    stat, deref('st_mtime'), datetime.fromtimestamp,
+)
+atime = compose_left(
+    stat, deref('st_atime'), datetime.fromtimestamp,
+)
+file_size = compose_left(
+    stat, deref('st_size'),
+)
+
+@curry
+def newer(path: T.Union[str, Path], test: T.Union[str, Path]):
+    '''Is the path newer than the test path?
+
+    '''
+    return ctime(path) > ctime(test)
+
+@curry
+def older(path: T.Union[str, Path], test: T.Union[str, Path]):
+    '''Is the path older than the test path?
+
+    '''
+    return ctime(path) < ctime(test)
+
 @ensure_paths
 def backup_path(path: Path):
     path = Path(path)
-    dt = dt_ctime(path)
+    dt = ctime(path)
     return Path(
         path.parent,
         ''.join((
@@ -285,3 +306,4 @@ def convert_utf8(path: Path):
         read_text,
         path.write_text,
     )
+

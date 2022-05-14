@@ -73,7 +73,7 @@ __all__ = [
 
     # text_processing
     'clipboard_copy', 'clipboard_paste', 'difflines', 'escape_row', 'intlines',
-    'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line',
+    'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi',
     'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
 
     # filesystem
@@ -81,14 +81,15 @@ __all__ = [
     'ensure_paths', 'ensure_paths_curry', 'glob',
     'is_path', 'newer', 'older', 'binpeek', 'read_text', 'read_bytes',
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'slurpbchunks',
-    'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline',
+    'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline', 
+    'stat', 'ctime', 'mtime', 'atime', 'file_size',
 
     # common
     'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 'cconcatv',
     'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 'do_error',
     'do_info', 'do_log', 'do_slice', 'error_raise', 'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'get_t', 'help_text',
-    'index', 'is_dict', 'is_float', 'is_indexable', 'is_int',
+    'index', 'is_dict', 'is_float', 'is_indexable', 'is_int', 'is_numeric',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
     'is_some', 'is_not_none', 'is_str', 'items', 'log_lines', 
     'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe',
@@ -101,7 +102,7 @@ __all__ = [
     'vcall', 'vcallif', 'vdo', 'vfilter', 'vfind',
     'vgroupby', 'vindex', 'vitemmap', 'vkeymap', 'vmap',
     'vmapcat', 'vmapdo', 'vmapif', 'vseti', 'vseti_t',
-    'vvalmap', 'wrap_text',
+    'vvalmap', 'wrap_text', 'maybe_mean', 'maybe_median', 'maybe_mode',
 
     # dynamic_import
     'function_from_path', 'load_module_directory',
@@ -117,8 +118,7 @@ __all__ = [
     'soup',
 
     # time
-    'ctime', 'ctime_as_dt', 'dt_ctime', 'maybe_dt', 'parse_dt',
-    'to_dt',
+    'maybe_dt', 'parse_dt', 'to_dt',
 
     # functions
     'arg_intersection', 'is_arg_superset', 'positional_args', 'positional_only_args',

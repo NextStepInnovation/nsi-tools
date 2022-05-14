@@ -1,3 +1,3 @@
 from . import (
-    common, ips, text,
+    common, ips, text, filesystem,
 )

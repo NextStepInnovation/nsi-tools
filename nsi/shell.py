@@ -5,18 +5,46 @@ import subprocess
 import shlex
 import logging
 from threading import Timer
-from typing import Callable, Any, List
+import typing as T
 from pathlib import Path        # noqa: for doctest
-import tempfile                 # noqa: for doctest
+import tempfile
+
+from nsi.toolz.common import is_str                 # noqa: for doctest
 
 from .toolz import (
-  merge, map, pipe, curry, do, cprint
+    merge, map, pipe, curry, do, cprint, to_bytes, is_numeric, vmap, filter,
 )
+from . import logging
 
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
+log = logging.new_log(__name__)
 
-def start_timeout(command: List[str], process: subprocess.Popen,
+def option_string(name: str, value: T.Union[bool, int, float, str], *, 
+                  double_quote: bool = False):
+    name = name.replace('_', '-')
+    match value:
+        case True:
+            return f'--{name}'
+        case False:
+            return ''
+        case num_v if is_numeric(num_v):
+            return f'--{name} {num_v}'
+        case str_v if is_str(str_v):
+            if double_quote:
+                return f'--{name} "{value}"'
+            return f"--{name} '{value}'"
+    log.error(
+        f'Passed value that was not int, float, or string: {repr(value)[:1000]}'
+    )
+
+def options_string(options: T.Dict[str, T.Union[int, float, str]]):
+    return pipe(
+        options.items(),
+        vmap(option_string),
+        filter(None),
+        ' '.join,
+    )
+
+def start_timeout(command: T.List[str], process: subprocess.Popen,
                   timeout: int):
     # https://www.blog.pythonlibrary.org/2016/05/17/python-101-how-to-timeout-a-subprocess/
     def kill():
@@ -28,10 +56,11 @@ def start_timeout(command: List[str], process: subprocess.Popen,
 
 @curry
 def shell_iter(command, *, echo: bool = True,
-               echo_func: Callable[[Any], None] = cprint(file=sys.stderr,
+               echo_func: T.Callable[[T.Any], None] = cprint(file=sys.stderr,
                                                          end=''),
-               timeout: int = None, **popen_kw):
-    '''Execute a shell command, yield lines of output as they come
+               timeout: int = None, dry_run: bool = False, **popen_kw):
+    '''
+    Execute a shell command, yield lines of output as they come
     possibly echoing command output to a given echo_func, and finally
     yields the status code of the process.
 
@@ -56,6 +85,9 @@ def shell_iter(command, *, echo: bool = True,
 
       timeout (int): If set, the process will be killed after this
         many seconds (kill -9).
+
+      dry_run (bool): Don't run the shell command, just show what would have 
+        run
 
     Returns: generator of the form
 
@@ -105,6 +137,11 @@ def shell_iter(command, *, echo: bool = True,
         map(os.path.expandvars),
         tuple,
     )
+
+    if dry_run:
+        log.warning(f'DRY RUN: {shlex.join(command_split)}')
+        yield 0
+        return
 
     process = subprocess.Popen(command_split, **popen_kw)
 

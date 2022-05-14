@@ -124,6 +124,7 @@ setup(
             'nsi-secretsdump=nsi.cli.secretsdump:dump',
             'nsi-ntlm-resolve=nsi.cli.ntlm:resolve',
             'nsi-ntlm-extract=nsi.cli.ntlm:extract',
+            'nsi-filesystem-meta=nsi.cli.filesystem:metadata',
         ],
     },
 )
