@@ -164,7 +164,7 @@ def groupdicts_from_regexes(regexes: Sequence[re.Pattern],
         iterable,
         map(regexer),
         filter(None),
-    )    
+    )
 
 # ---------------------------
 #

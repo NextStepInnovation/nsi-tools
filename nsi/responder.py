@@ -24,7 +24,7 @@ def enrich_query(query: QueryDict):
     return merge(
         query,
         {'ip': to_ipv4(query['raw_ip'])},
-        {'dt': to_dt(query['ts'])},
+        # {'dt': to_dt(query['ts'])},
         {'query': pipe(query['query'], replace('\u0005', ''))},
     )
     
@@ -33,14 +33,15 @@ start_time_re = re.compile(
     r'\s+Responder Started: (?P<args>\[.*?\])'
 )
 query_re = re.compile(
-    r'(?P<ts>\d\d/\d\d/\d\d\d\d \d\d:\d\d:\d\d \w\w)\s+-\s+\[\*\]'
+    r'^(?P<ts>\d\d/\d\d/\d\d\d\d \d\d:\d\d:\d\d \w\w)\s+-\s+\[\*\]'
     r'\s+\[(?P<proto>.*?)\]'
     r'\s+Poisoned answer sent to'
     r'\s+(?P<raw_ip>.*?)'
     r'\s+for name'
     r'\s+(?P<query>\S*)'
-    r'\s*(\(service: (?P<service>.*?)\))?', re.I
+    r'\s*(\(service: (?P<service>.*?)\))?$', re.I | re.MULTILINE
 )
+
 queries_from_lines = compose_left(
     groupdicts_from_regexes([query_re], keep_match=True),
     map(enrich_query),
@@ -53,11 +54,22 @@ queries_from_lines = compose_left(
 #         filter(None),
 #         map(enrich_query),
 #     )
-queries_from_content = compose_left(
-    splitlines, queries_from_lines,
-)
+
+def queries_from_content(content: str):
+    return pipe(
+        content,
+        query_re.finditer,
+        map(lambda m: m.groupdict()),
+        map(enrich_query),
+    )
+
+# queries_from_content = compose_left(
+#     splitlines, queries_from_lines,
+# )
+
 queries_from_path = compose_left(
-    slurp, queries_from_content,
+    slurp, 
+    queries_from_content,
 )
     
 def queries_to_table(queries: T.Iterator[QueryDict]):
@@ -85,4 +97,11 @@ def queries_to_table(queries: T.Iterator[QueryDict]):
             f'| `{ip}` | `{query}` | {proto} |'
         )),
         '\n'.join
+    )
+
+def query_table_from_path(path: Path):
+    return pipe(
+        path,
+        queries_from_path,
+        queries_to_table,
     )
