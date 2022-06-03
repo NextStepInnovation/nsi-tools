@@ -187,6 +187,7 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
     nmap_command = nmap.cached_nmap(
         output_dir_path, ports=ports, top_ports=top_ports, force=force,
         skip_discovery=skip_discovery, aggressive=aggressive, no_dns=no_dns,
+        getoutput=getoutput,
     )
 
     pmap = parallel.thread_map(max_workers=5)
