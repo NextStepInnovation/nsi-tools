@@ -81,6 +81,13 @@ def dns_resolve(inpath, bh, outpath, ssh, echo, dns_server, from_clipboard,
         getoutput = ssh_getoutput(ssh, echo=echo)
 
     def print_format(hosts):
+        return _.pipe(
+            hosts,
+            _.map(lambda h: (
+                f"{h['name']}\t{h['ip']}"
+            )),
+            '\n'.join,
+        )
         max_len = _.pipe(
             hosts,
             _.map(lambda h: h['name']),
