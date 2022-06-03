@@ -22,7 +22,7 @@ def parse_ntlm_from_lines(lines: T.Iterable[str]):
         lines,
         map(ntlm_re.search),
         filter(None),
-        map(lambda m: m.groupdict()['ntlm']),
+        map(lambda m: m.groupdict()),
     )
 
 parse_ntlm_from_content = compose_left(
@@ -64,7 +64,8 @@ def parse_ntlm_from_path(root: Path, *, do_binary=False, max_size=5 * 2**20):
 
 
 sam_re = re.compile(
-    r'^\s*(?:(?P<domain>.*?)\\)?(?P<user>.*?):(?P<sid>\d+):(?P<hashes>\w{32}:\w{32}):::\s*$', 
+    r'^\s*(?:(?P<domain>.*?)\\)?(?P<user>.*?):(?P<sid>\d+):(?P<ntlm>\w{32}:\w{32}):::\s*$', 
+    re.M,
 )
 
 def parse_sam_from_lines(lines: T.Iterable[str]):
@@ -83,16 +84,24 @@ parse_sam_from_content = compose_left(
 )
 get_sam_hashes = parse_sam_from_content
 
-parse_sam_from_path = compose_left(
-    slurp,
-    parse_sam_from_content,
-)
-
-def get_ip(p: Path):
+@ensure_paths
+def parse_sam_from_path(path: Path):
+    content = slurp(path)
+    ip = get_ip(path)
     return pipe(
-        [p, p.parent],
-        map(str),
-        map(ip_relaxed_re.search),
+        content,
+        parse_sam_from_content,
+        map(lambda d: merge(
+            d, {'ip': ip}
+        )),
+    )
+    
+@ensure_paths(resolve=True)
+def get_ip(p: Path):
+    return maybe(ip_relaxed_re.search(str(p))).group(0) or ''
+    return pipe(
+        str(p),
+        ip_relaxed_re.search,
         filter(None),
         maybe_first,
     ).group(0) or ''

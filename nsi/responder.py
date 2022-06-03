@@ -41,6 +41,39 @@ query_re = re.compile(
     r'\s+(?P<query>\S*)'
     r'\s*(\(service: (?P<service>.*?)\))?$', re.I | re.MULTILINE
 )
+skip_re = re.compile(
+    r'^(?P<ts>\d\d/\d\d/\d\d\d\d \d\d:\d\d:\d\d \w\w)\s+-\s+\[\*\]'
+    r'\s+Skipping previously captured hash for (?P<account>.*)$',
+    re.I | re.MULTILINE
+)
+hash_data_re = re.compile(
+    r'^(?P<ts>\d\d/\d\d/\d\d\d\d \d\d:\d\d:\d\d \w\w)\s+-'
+    r'\s+\[(?P<proto>.*?)\]'
+    r'\s+(?P<ntlm_version>NTLMv\d+)'
+    r'\s+(?P<key>.*?)\s+:'
+    r'\s+(?P<value>.*)$', re.I | re.MULTILINE
+)
+
+def dict_from_line(line: str):
+    search = pipe((
+        ('start_time', start_time_re),
+        ('query', query_re),
+        ('skip', skip_re),
+        ('hash_data', hash_data_re),
+    ), vmap(lambda t, r: (t, groupdict(r))))
+    for type, gd_f in search:
+        gd = gd_f(line)
+        if gd:
+            if type == 'query':
+                gd = enrich_query(gd)
+            return merge(gd, {
+                'responder_type': type,
+            })
+
+query_from_line = compose_left(
+    groupdict(query_re),
+    lambda q: enrich_query(q) if q else {},
+)
 
 queries_from_lines = compose_left(
     groupdicts_from_regexes([query_re], keep_match=True),
@@ -89,10 +122,10 @@ def queries_to_table(queries: T.Iterator[QueryDict]):
             sorted,
         )),
         items,
-        sorted,
         vmapcat(lambda ip, queries: [
             (ip, query, proto) for query, proto in queries
         ]),
+        sort_by(lambda t: int(ip_address(t[0]))),
         vmap(lambda ip, query, proto: (
             f'| `{ip}` | `{query}` | {proto} |'
         )),

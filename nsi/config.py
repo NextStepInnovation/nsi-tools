@@ -10,10 +10,21 @@ can either be just a string
 ### Configuration boilerplate
 
 CONFIG_BP = (
-    nsi.config.base_config('My Cool Toolkit') + """
+    nsi.config.base_config('My Cool Toolkit (MCT)') + """
 # ------------------------------
 #  WebDAV for My Cool Toolkit
 # ------------------------------
+#
+# Environment variable prefix for variables to override configuration
+# 
+# Example: 
+# 
+# If for you wanted to set config['webdav']['username'], you would use the 
+# following environment variable:
+# 
+# export MCT_WEBDAV_USERNAME='testname'
+# 
+env_prefix: MCT
 
 webdav:
   # Username given after creating app password
@@ -39,6 +50,8 @@ smtp:
 
 XXX: Fix
 '''
+import os
+import ast
 import functools
 import typing as T
 from pathlib import Path
@@ -146,11 +159,41 @@ def config_dir_provider(config_dir_path: Path, cache_dir_name: str):
         return wrapper
     return provide_config_dir
 
+@curry
+def load_environment_vars(prefix: str, config_obj: T.Any, 
+                          keys: T.Iterable[str] = ()):
+    '''
+    Load environment variables for config object values. Only populate config
+    dictionary with values provided by environment variables.
+    '''
+    match config_obj:
+        case cdict if is_dict(cdict):
+            return pipe({
+                k: load_environment_vars(prefix, v, concatv(keys, [k])) 
+                for k, v in cdict.items()
+            }, valfilter(is_some))
+        case other:
+            env_keys = concatv_t([prefix], keys)
+            env_var = pipe(
+                env_keys,
+                map(upper),
+                '_'.join,
+            )
+            log.debug(
+                f'  checking environment variable: {env_keys} --> {env_var}'
+            )
+            if env_var in os.environ:
+                env_value = os.environ[env_var]
+                try:
+                    # catch integers, floats, lists, tuples, etc.
+                    return ast.literal_eval(env_value)
+                except ValueError:
+                    return env_value
 
 def config_loader(provide_config_dir_dec: T.Callable, config_name: str, 
                   config_bp: T.Union[str, T.Callable]):
     @provide_config_dir_dec
-    def load_config(config_dir, cache_dir):
+    def load_config(config_dir: Path, cache_dir: Path):
         path = config_dir / config_name
         if not path.exists():
             log.info(
@@ -160,6 +203,11 @@ def config_loader(provide_config_dir_dec: T.Callable, config_name: str,
             path.chmod(0o600)
         return pipe(
             yaml.read_yaml(path),
+            lambda config: merge(
+                config, {
+                    'env': load_environment_vars(config['env_prefix'], config)
+                } if 'env_prefix' in config else {}
+            ),
             to_pyrsistent,
         )
     return load_config
@@ -177,7 +225,7 @@ def config_provider(loader: T.Callable, verifier: T.Callable):
     return with_config
 
 def younger_than(delta, path):
-    return datetime.now() - dt_ctime(path) < delta
+    return datetime.now() - ctime(path) < delta
 
 # def _reset_cache(func, path):
 #     func._reset = True

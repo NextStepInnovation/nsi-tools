@@ -1027,3 +1027,13 @@ def map_to_set(func: Callable[[Any], Hashable], iterable):
         result.add(func(value))
     return result
 
+def most_common(obj: Union[Counter, Iterable[Hashable]]):
+    match obj:
+        case counter if isinstance(counter, Counter):
+            return counter.most_common()
+        case iterable:
+            return pipe(
+                iterable,
+                Counter,
+                lambda c: c.most_common(),
+            )

@@ -54,7 +54,8 @@ POS_PARAM_KINDS = {
     inspect.Parameter.POSITIONAL_OR_KEYWORD,
     inspect.Parameter.VAR_POSITIONAL,
 }
-def ensure_paths(func, *, expanduser: bool=True):
+@curry
+def ensure_paths(func, *, expanduser: bool=True, resolve: bool=False):
     '''Ensure that all path-like arguments of this function are converted into
     Path objects. Furthermore, paths by default have expanduser() called.
 
@@ -105,6 +106,8 @@ def ensure_paths(func, *, expanduser: bool=True):
                 kw[k] = Path(v)
                 if expanduser:
                     kw[k] = kw[k].expanduser()
+                if resolve:
+                    kw[k] = kw[k].resolve()
         return func(*a, **kw)
     return path_arg_converter
 

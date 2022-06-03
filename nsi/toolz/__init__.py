@@ -103,6 +103,7 @@ __all__ = [
     'vgroupby', 'vindex', 'vitemmap', 'vkeymap', 'vmap',
     'vmapcat', 'vmapdo', 'vmapif', 'vseti', 'vseti_t',
     'vvalmap', 'wrap_text', 'maybe_mean', 'maybe_median', 'maybe_mode',
+    'most_common',
 
     # dynamic_import
     'function_from_path', 'load_module_directory',
