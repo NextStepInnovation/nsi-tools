@@ -3,11 +3,13 @@
 
 '''
 from pathlib import Path
+from datetime import datetime
 import shlex
 import xml.etree.ElementTree
 import typing as T
 from typing import Union
 from collections import defaultdict
+from pymaybe import Nothing
 import hashlib
 import pprint
 import json
@@ -76,27 +78,27 @@ def nmap(ip_or_range_or_path, *, ports=None, top_ports=None,
          getoutput=getoutput(echo=False), no_dns=False,
          syn=False, rate=20000, version=False, tcp=None, udp=False,
          skip_discovery=False, sudo=False, os_discovery=False,
-         aggressive=False, output=None, verbose=False, args=None):
+         aggressive=False, output_dir=None, output_stem=None,
+         verbose=False, args=None):
     '''Perform an nmap scan of some number of hosts
 
     Args:
 
       ip_or_range_or_path (str/seq/Path): Either an IP (str), an
         nmap-formatted IP range (str: e.g. 192.168.1.1-10 or CIDR
-        192.168.1.0/24), a sequence of IPs (list/tuple), or a path to
-        a file with a list of IPs (str/Path)
+        192.168.1.0/24), a sequence of IPs (list/tuple), or a path to a file
+        with a list of IPs (str/Path)
 
     Optional:
 
       ports (str, seq, int): Either an nmap-formatted port list (str)
-        or a sequence of ports (list/tuple). Default: default nmap
-        behavior
+        or a sequence of ports (list/tuple). Default: default nmap behavior
 
       top_ports (int): Integer designating the N top ports to scan.
 
       getoutput (function): Function to pass the constructed shell
-        command that will run nmap and generate nmap's XML output for
-        the given input. Default: subprocess.getoutput
+        command that will run nmap and generate nmap's XML output for the given
+        input. Default: subprocess.getoutput
 
       syn (bool): Should this be a SYN "stealth" scan (implies
         sudo)? Default: False
@@ -120,7 +122,9 @@ def nmap(ip_or_range_or_path, *, ports=None, top_ports=None,
       aggressive (bool): Do OS discovery, default script scan, version
         scan, and traceroute. Default: False
 
-      output (str): Output path for "normal" nmap output to be saved
+      output_dir (str): Directory for nmap output to be saved
+
+      output_stem (str): Output file name stem (minus extension)
 
       verbose (bool): Verbose output?
 
@@ -174,7 +178,16 @@ def nmap(ip_or_range_or_path, *, ports=None, top_ports=None,
     udp = '-sU' if udp else ''
     verbose = '-v' if verbose else ''
     no_dns = '-n' if no_dns else ''
-    output = f'-oN {output}' if output else ''
+
+    if not output_dir:
+        output_dir = datetime.now().strftime('.nmap-%Y-%M-%D-%H%M%S')
+
+    if not output_stem:
+        output_stem = 'nmap'
+
+    normal_path = Path(output_stem + '.txt')
+    xml_path = Path(output_stem + '.xml')
+    output = f'-oX {xml_path} -oN -'
 
     need_sudo = syn or udp or os_discovery or sudo
     nmap_command = 'sudo nmap' if need_sudo else 'nmap'
@@ -182,7 +195,7 @@ def nmap(ip_or_range_or_path, *, ports=None, top_ports=None,
     command = _.pipe(
         f'{nmap_command} {ports} {syn} {version} {tcp} {udp}'
         f' {os_discovery} {aggressive} {no_dns} {probe} {verbose} {args}'
-        f' -oX - {output} {iprange}',
+        f' {output} {iprange}',
         shlex.split,            # clean up extra whitespace
         ' '.join,
     )
@@ -193,7 +206,10 @@ def nmap(ip_or_range_or_path, *, ports=None, top_ports=None,
         return s
     log.info(f'[nmap] command: {shorten(command)}')
 
-    output = getoutput(command)
+    normal_output = getoutput(command)
+    normal_path.write_text(normal_output)
+    xml_output = xml_path.read_text()
+
     log.debug(output)
 
     def try_parse(output):
@@ -208,7 +224,7 @@ def nmap(ip_or_range_or_path, *, ports=None, top_ports=None,
             return xml.etree.ElementTree.Element('')
 
     return _.pipe(
-        output,
+        xml_output,
         lambda xml: (xml, try_parse(xml)),
         # xmljson.BadgerFish(dict_type=dict).data,
         # xmljson.Parker(dict_type=dict).data,
@@ -239,9 +255,10 @@ def cached_nmap(output_dir: Union[str, Path], host: str, *,
 
     '''
     root = Path(output_dir).expanduser()
-    json_path = Path(root, f'{prefix}{host}.json')
-    xml_path = Path(root, f'{prefix}{host}.xml')
-    normal_path = Path(root, f'{prefix}{host}.txt')
+    path_stem = f'{prefix}{host}'
+    json_path = Path(root, f'{path_stem}.json')
+    xml_path = Path(root, f'{path_stem}.xml')
+    normal_path = Path(root, f'{path_stem}.txt')
     if json_path.exists() and normal_path.exists() and not force:
         log.info(
             f'[cached_nmap] {json_path} exists, skipping...'
@@ -265,18 +282,18 @@ def parse_address(address: dict):
     return _.merge(
         address,
         {'addr': address.get('addr'),
-         'vendor': address.get('vendor', _.Null)},
+         'vendor': address.get('vendor', Nothing())},
     )
 
 def parse_addresses(host: dict):
     address = host['address']
     if _.is_seq(address):
         return _.merge(
-            {'ipv4': _.Null},
+            {'ipv4': Nothing()},
             {a['addrtype']: parse_address(a) for a in address},
         )
     return _.merge(
-        {'ipv4': _.Null},
+        {'ipv4': Nothing()},
         {address['addrtype']: parse_address(address)},
     )
 
@@ -290,7 +307,7 @@ def parse_host(host: dict):
 
 def get_hosts(nmap):
     if not nmap:
-        return _.Null
+        return Nothing()
     nhosts = get_num_hosts(nmap)
 
     if nhosts == 1:
