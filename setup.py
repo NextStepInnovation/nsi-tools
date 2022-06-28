@@ -24,6 +24,14 @@ setup(
     package_dir={
         'nsi': 'nsi',
     },
+    package_data = {
+        'nsi': [
+            'data/nmap-services',
+            'data/*.txt',
+            'data/*.csv',
+            'data/*.gz',
+        ],
+    },
 
     install_requires=[
         'bs4',
