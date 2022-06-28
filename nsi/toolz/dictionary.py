@@ -11,6 +11,16 @@ from .common import (
 from .json import json_dumpb
 from .pyrsistent import no_pyrsistent
 
+__all__ = [
+    # dictionary
+    'cassoc', 'cassoc_in', 'cdissoc', 'cmerge', 'create_key', 
+    'dict_hash', 'dict_md5', 'dict_sha1', 'dict_sha256',
+    'drop_key', 'drop_keys',
+    'merge_keys', 'only_if_key', 'remove_key', 'remove_keys', 'replace_key',
+    'set_key', 'switch_keys', 'update_if_key_exists', 'update_key', 'update_key_v',
+    'valmaprec',
+]
+
 # ----------------------------------------------------------------------
 #
 # Dictionary functions

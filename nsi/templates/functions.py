@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 
 import jinja2
 
@@ -52,6 +53,10 @@ def nsi_functions(env: jinja2.Environment, **funcs):
             'png': png,
             'jpeg': jpeg,
             'table': table,
+            'choice': random.choice,
+            'random_str': random_str,
+            'random_str_word_set': random_str_word_set,
+            'randrange': random.randrange,
         }, funcs
     ))
 

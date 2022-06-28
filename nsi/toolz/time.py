@@ -9,6 +9,11 @@ import dateutil.tz
 
 from .common import pipe, curry
 
+__all__ = [
+    # time
+    'maybe_dt', 'parse_dt', 'to_dt', 'date_to_datetime',
+]
+
 # ----------------------------------------------------------------------
 #
 # Time-oriented functions

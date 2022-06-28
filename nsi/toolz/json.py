@@ -7,6 +7,10 @@ from pymaybe import Nothing
 
 from .common import curry, is_none, new_log, pipe, to_bytes
 
+__all__ = [
+    'jmes', 'json_dumps', 'json_dumpb', 'json_loads', 'maybe_json',
+]
+
 log = new_log(__name__)
 
 # ----------------------------------------------------------------------

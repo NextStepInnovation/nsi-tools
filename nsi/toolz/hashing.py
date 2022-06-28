@@ -11,6 +11,12 @@ from .common import (
     to_bytes, to_str, compose_left, 
 )
 
+__all__ = [
+    # hashing
+    'b64decode', 'b64decode_str', 'b64encode', 'b64encode_str', 'hash', 'md5',
+    'sha1', 'sha256', 'sha512',
+]
+
 # ----------------------------------------------------------------------
 #
 # Hashing and encoding functions

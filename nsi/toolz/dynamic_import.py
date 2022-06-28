@@ -12,6 +12,10 @@ from .. import logging
 
 log = logging.new_log(__name__)
 
+__all__ = [
+    # dynamic_import
+    'function_from_path', 'load_module_directory',
+]
 
 def function_from_path(func_path: str):
     '''Return the function object for a given module path

@@ -21,6 +21,16 @@ from .. import shell
 
 log = new_log(__name__)
 
+__all__ = [
+    # filesystem
+    'POS_PARAM_KINDS', 'backup_path', 'check_parents_for_file', 
+    'ensure_paths', 'ensure_paths_curry', 'glob',
+    'is_path', 'newer', 'older', 'binpeek', 'read_text', 'read_bytes',
+    'slurp', 'slurpb', 'slurpblines', 'slurplines', 'slurpbchunks',
+    'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline', 
+    'stat', 'ctime', 'mtime', 'atime', 'file_size',
+]
+
 # ----------------------------------------------------------------------
 #
 # File operations

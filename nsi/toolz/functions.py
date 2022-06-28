@@ -2,6 +2,12 @@ import inspect
 
 from .common import pipe
 
+__all__ = [
+    # functions
+    'arg_intersection', 'is_arg_superset', 'positional_args',
+    'positional_only_args',
+]
+
 def arg_intersection(func, kw):
     params = inspect.signature(func).parameters
     if any(p.kind == p.VAR_KEYWORD for p in params.values()):

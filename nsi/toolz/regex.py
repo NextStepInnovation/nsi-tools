@@ -10,6 +10,16 @@ from .common import *
 
 log = new_log(__name__)
 
+__all__ = [
+    # regex
+    'Regex', 'bakedict', 
+    'grep', 'grep_t', 'grepitems', 'grepv', 'grepv_t', 
+    'igrep', 'grept', 'igrept', 'igrepv', 'igrepvt', 
+    'grepvitems', 'groupdict', 'groupdicts',
+    'groupdicts_from_regexes', 'match_d', 're_search', 'regex_transform', 
+    'to_regex', 'vbakedict',
+]
+
 # ----------------------------------------------------------------------
 #
 # Regular expression functions
