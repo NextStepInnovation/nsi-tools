@@ -88,7 +88,7 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
 
     output_dir = (
         Path(output_dir) if output_dir 
-        else Path(f'.{username}-smb-shares')
+        else Path(f'.{username or "NULL"}-{_.md5(password)}-smb-shares')
     )
     output_dir.mkdir(exist_ok=True, parents=True)
 

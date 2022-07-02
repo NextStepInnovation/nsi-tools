@@ -1,6 +1,7 @@
 from pathlib import Path
 import hashlib
 import base64
+import binascii
 from collections.abc import Callable as Function
 from typing import Union, Callable
 
