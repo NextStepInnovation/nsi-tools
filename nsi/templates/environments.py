@@ -7,7 +7,9 @@ from ..toolz import *
 from .common import resource_filename
 from . import filters, functions
 
-def get_env(path: Path = None):
+def get_env(path: Path = None, *, 
+            extra_filters: T.Dict[str, T.Callable] = None,
+            extra_functions: T.Dict[str, T.Callable] = None):
     path = path or resource_filename('j2')
     return pipe(
         jinja2.Environment(
@@ -16,11 +18,13 @@ def get_env(path: Path = None):
                 jinja2.FileSystemLoader,
             ),
         ), 
-        filters.nsi_filters,
-        functions.nsi_functions,
+        filters.nsi_filters(**(extra_filters or {})),
+        functions.nsi_functions(**(extra_functions or {})),
     )
 
-def get_metatemplate_env(path: T.Union[str, Path] = None):
+def get_metatemplate_env(path: T.Union[str, Path] = None, *,
+                         extra_filters: T.Dict[str, T.Callable] = None,
+                         extra_functions: T.Dict[str, T.Callable] = None):
     path = path or resource_filename('j2')
     env = jinja2.Environment(
         variable_start_string='%%',
@@ -37,7 +41,7 @@ def get_metatemplate_env(path: T.Union[str, Path] = None):
 
     return pipe(
         env, 
-        filters.nsi_filters,
-        functions.nsi_functions,
+        filters.nsi_filters(**(extra_filters or {})),
+        functions.nsi_functions(**(extra_functions or {})),
     )
 

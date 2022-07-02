@@ -14,6 +14,10 @@ from .common import (
 from .filesystem import ensure_paths
 from .. import logging
 
+__all__ = [
+    # binary_data
+    'is_binary_string', 'is_binary', 'strings', 'detect_encoding',
+]
 
 log = logging.new_log(__name__)
 

@@ -10,6 +10,11 @@ from .common import (
     maybe_float, maybe_int,
 )
 
+__all__ = [
+    # pyrsistent
+    'freeze', 'frozen_curry', 'no_pyrsistent', 'to_pyrsistent',
+]
+
 # ----------------------------------------------------------------------
 #
 # pyrsistent object functions

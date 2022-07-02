@@ -4,6 +4,12 @@ import urllib.parse
 
 from .common import curry, pipe, map, filter
 
+__all__ = [
+    # urllib
+    'urlencode', 'urlparse', 'urlsplit', 'urlunparse', 'urlunsplit', 'urljoin',
+    'parse_qs', 'parse_qsl',
+]
+
 urlencode = curry(urllib.parse.urlencode)
 urlparse = curry(urllib.parse.urlparse)
 urlsplit = curry(urllib.parse.urlsplit)

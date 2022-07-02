@@ -8,6 +8,13 @@ from .common import (
     is_seq, is_str, to_str,
 )
 
+__all__ = [
+    # text_processing
+    'clipboard_copy', 'clipboard_paste', 'difflines', 'escape_row', 'intlines',
+    'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi', 'clip_text',
+    'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
+]
+
 # ----------------------------------------------------------------------
 #
 # Comment handling functions
@@ -140,3 +147,15 @@ def html_list(items):
 
 def noansi(text: str):
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
+
+@curry
+def clip_text(length, text, buf=' [...] ') -> str:
+    text = to_str(text)
+    if len(text) > length * 2:
+        if length % 2 == 0:
+            l, r = (length // 2, length // 2)
+        else:
+            l, r = (length // 2, (length // 2 + 1))
+        return text[:l] + buf + text[-r:]
+    return text
+

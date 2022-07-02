@@ -5,6 +5,12 @@ import requests
 from pymaybe import Nothing
 
 from .common import pipe
+
+__all__ = [
+    # http
+    'session_with_cookies', 'url', 'valid_content', 'valid_response',
+]
+
 # ----------------------------------------------------------------------
 #
 # HTTP functions

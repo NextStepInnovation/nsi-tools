@@ -2,6 +2,11 @@ import networkx as nx
 
 from .common import curry
 
+__all__ = [
+    # graph
+    'bfs_tree', 'from_edgelist',
+]
+
 # ----------------------------------------------------------------------
 #
 # Graph functions
