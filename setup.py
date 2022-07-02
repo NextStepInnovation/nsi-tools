@@ -92,6 +92,7 @@ setup(
             'difflines=nsi.cli.text:diff_lines',
             'intlines=nsi.cli.text:int_lines',
             'sortips=nsi.cli.ips:sort_ips',
+            'sortbyips=nsi.cli.ips:sort_by_ips',
             'getips=nsi.cli.ips:get_ips',
             'getsubnets=nsi.cli.ips:get_subnets',
             'zpad=nsi.cli.ips:zpad_ips',
