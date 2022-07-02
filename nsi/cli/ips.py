@@ -100,6 +100,58 @@ def sort_ips(inpath, keepcomments, clipboard):
     type=click.Path(exists=True),
 )
 @click.option(
+    '-K', '--keep-non-ip', is_flag=True,
+    help=('Keep lines without an IP'),
+)
+@click.option(
+    '-C', '--clipboard', is_flag=True,
+    help=('Get IPs from clipboard, send sorted to clipboard'),
+)
+def sort_by_ips(inpath, keep_non_ip, clipboard):
+    '''
+    Given a list of lines containing an IP (one per line) from a file path
+    (INPATH), the clipboard (-C), or stdin if nothing provided, print in sorted
+    order based on the first IP found (to stdout unless -C is provided).
+
+    Lines with IPs go first, sorted by the first IP contained in them, all other
+    lines go after if --keep-non-ip is provided.
+
+    '''
+    content = get_input_content(inpath, clipboard)
+    get_ip_from_str = _.compose_left(_.get_ips_from_str, _.maybe_first)
+    def sort_by_ips(lines):
+        ip_lines = _.pipe(
+            lines,
+            _.map(lambda l: (get_ip_from_str(l), l)),
+            tuple,
+        )
+        yield from _.pipe(
+            ip_lines, 
+            _.filter(_.first), 
+            _.sort_by(_.compose_left(_.first, _.ip_tuple)), 
+            _.map(_.second),
+        )
+        if keep_non_ip:
+            yield from _.pipe(
+                ip_lines, 
+                _.filter(_.complement(_.first)), 
+                _.map(_.second),
+            )
+
+    return _.pipe(
+        content.splitlines(),
+        sort_by_ips,
+        '\n'.join,
+        print if not clipboard else cb_copy_ensure_nl,
+    )
+
+@click.command()
+@click.argument(
+    'inpath',
+    required=False,
+    type=click.Path(exists=True),
+)
+@click.option(
     '-s', '--slash', type=int, default=24,
     help='Find the networks in the list of IPs of the given size (16, 24)'
 )
