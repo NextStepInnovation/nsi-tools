@@ -2,6 +2,7 @@ import urllib
 import urllib.parse
 import typing as T
 import functools
+from collections import namedtuple
 
 import requests
 from pyrsistent import pmap, PMap
@@ -20,21 +21,37 @@ class TokenAuth(requests.auth.AuthBase):
         return request
 
 # E.g. https://example.com/api/v1
-BaseURI = T.NewType('BaseURI', str)
+BaseURL = T.NewType('BaseURL', str)
+
+P = T.ParamSpec # both *args, and **kwargs
+Method = T.Callable[[P], requests.Response]
+
+Api_T = T.TypeVar('Api_T', bound='Api')
+Endpoint_T = T.TypeVar('Endpoint_T', bound='Endpoint')
+ParseResult = namedtuple(
+    'ParseResult', ['scheme', 'netloc', 'path', 'params', 'query', 'fragment']
+)
+
+# These are keyword arguments passed to the Request that need to be "namespaced"
+# first. That is, they need to be passed to the `namespace_data` function to be
+# "flattened" into a namespace before being passed the Request as a JSON/body
+# parameter. See the `namespace_data` function for more details
+NSKeywords = T.Sequence[str]
 
 class Api:
-    base: urllib.parse.ParseResult
+    base: ParseResult
     session: requests.Session
-    method_kw: PMap
+    method_kwargs: PMap
+    ns_keywords: NSKeywords
 
-    def __init__(self, base: BaseURI, session: requests.Session, *,
-                 ns_keywords: T.Sequence[str] = None, **method_kw):
+    def __init__(self, base: BaseURL, session: requests.Session, *,
+                 ns_keywords: NSKeywords = None, **method_kwargs):
         self.base = urllib.parse.urlparse(base)
         self.session = session
-        self.ns_keywords = ns_keywords or ()
-        self.method_kw = pmap(method_kw)
+        self.ns_keywords = pipe(ns_keywords or (), tuple)
+        self.method_kwargs = pmap(method_kwargs)
 
-    def url(self, *parts, **query):
+    def url(self, *parts, **query) -> str:
         return pipe(
             (
                 self.base.scheme,
@@ -48,7 +65,7 @@ class Api:
                 pipe(
                     self.base.query,
                     parse_qs,
-                    lambda qd: merge(qd, query),
+                    lambda qdict: merge(qdict, query),
                     urlencode(doseq=True),
                 ),
                 self.base.fragment,
@@ -56,11 +73,11 @@ class Api:
             urlunparse,
         )
 
-    def __call__(self, *parts, **kw):
+    def __call__(self, *parts, **kwargs) -> Endpoint_T:
         return Endpoint(
             self, parts, 
             ns_keywords=self.ns_keywords, 
-            **merge(self.method_kw, kw),
+            **merge(self.method_kwargs, kwargs),
         )
 
 def namespace_data(data: dict, sep='[]'):
@@ -97,66 +114,82 @@ def namespace_data(data: dict, sep='[]'):
             vcall(merge),
         )
     return data
-                    
+
 class Endpoint:
-    def __init__(self, api, parts, *, 
+    get: Method
+    post: Method
+    put: Method
+    delete: Method
+    head: Method
+    options: Method
+    patch: Method
+
+    def __init__(self, api: Api_T, url_parts: T.Sequence[str | int], *, 
                  ns_keywords: T.Sequence[str] = None, **kwargs):
         self.api = api
-        self.parts = tuple(parts)
+        self.url_parts = tuple(url_parts)
         self.ns_keywords = ns_keywords or ()
 
-        self.kwargs = pipe(
-            merge(
-                {'url': self.url},
-                kwargs,
-            ),
-            pmap,
-        )
+        self.orig_kwargs = kwargs
 
         for name in ['get', 'post', 'put', 'delete', 'head',
                      'options', 'patch']:
             setattr(
-                self, name, self.method(name, **self.kwargs)
+                self, name, self.method(name)
             )
             # setattr(
             #     self, f'maybe_{name}', self.maybe_method(name, **self.kwargs)
             # )
 
-    def __call__(self, *parts, **kw):
+    def __call__(self, *url_parts, **kwargs) -> Endpoint_T:
+        url_parts = pipe(
+            concatv(self.url_parts, url_parts),
+            tuple,
+        )
         return Endpoint(
-            self.api, tuple(concatv(self.parts, parts)), 
-            ns_keywords=self.ns_keywords, **kw
+            self.api, url_parts, 
+            ns_keywords=self.ns_keywords, 
+            **merge(self.orig_kwargs, kwargs),
         )
 
     @property
     def url(self):
         return pipe(
-            self.parts,
+            self.url_parts,
             map(str),
             vcall(self.api.url),
         )
 
-    def method(self, name, **orig_kw) -> requests.Response:
+    def get_kwargs(self, **kwargs) -> dict:
+        kwargs: dict = pipe(
+            merge(
+                {'url': self.url},
+                self.orig_kwargs,
+                kwargs,
+            ),
+        )
+
+        for key in self.ns_keywords:
+            if key in kwargs:
+                kwargs[key] = namespace_data(kwargs[key])
+
+        match self.api.method_kwargs:
+            case {'json': json_data}:
+                kwargs['json'] = merge(
+                    json_data, kwargs.get('json', {})
+                )
+
+        return kwargs
+
+    def method(self, name: str) -> Method:
         session_method = getattr(self.api.session, name)
         @functools.wraps(session_method)
-        def caller(*args, **kw):
-            kw = merge(orig_kw, kw)
-            for key in self.ns_keywords:
-                if key in kw:
-                    kw[key] = pipe(
-                        kw.pop(key),
-                        namespace_data,
-                    )
-            # Preserve JSON data passed in to Api object
-            if 'json' in self.api.method_kw:
-                kw['json'] = merge(
-                    self.api.method_kw.get('json', {}),
-                    kw.get('json', {}),
-                )
+        def caller(*args, **kwargs):
+            kwargs: dict = self.get_kwargs(**kwargs)
             log.debug(
-                f'{name.upper()}: args: {args} kw: {kw}'
+                f'{name.upper()} --> args: {args} kw: {kwargs}'
             )
-            return error_raise(session_method)(*args, **kw)
+            return error_raise(session_method)(*args, **kwargs)
         return caller
 
     # def maybe_method(self, name: str, **orig_kw) -> T.Tuple[

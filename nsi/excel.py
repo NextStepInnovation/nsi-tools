@@ -1,7 +1,8 @@
 from pathlib import Path
 
 # Excel
-from openpyxl import Workbook, load_workbook as _load_workbook
+import openpyxl
+from openpyxl import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -19,7 +20,7 @@ log = logging.new_log(__name__)
 def load_workbook(path, *a, **kw) -> Workbook:
     '''Adds opened_from to Workbook object
     '''
-    wb = _load_workbook(path, *a, **kw)
+    wb = openpyxl.load_workbook(path, *a, **kw)
     wb.opened_from = path
     return wb
 
