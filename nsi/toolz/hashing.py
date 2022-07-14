@@ -8,14 +8,13 @@ from typing import Union, Callable
 from multipledispatch import dispatch
 
 from .common import (
-    curry, is_str, pipe,
-    to_bytes, to_str, compose_left, 
+    curry, is_str, pipe, to_bytes, to_str, compose_left, call,
 )
 
 __all__ = [
     # hashing
     'b64decode', 'b64decode_str', 'b64encode', 'b64encode_str', 'hash', 'md5',
-    'sha1', 'sha256', 'sha512',
+    'sha1', 'sha256', 'sha512', 'nt',
 ]
 
 # ----------------------------------------------------------------------
@@ -56,6 +55,13 @@ def hash_content(hasher: Callable):
             lambda h: h.hexdigest(),
         )
     return do_hash
+
+def nt(content: str):
+    return pipe(
+        hashlib.new(
+            'md4', content.encode('utf-16le')
+        ).hexdigest(),
+    )
 
 md5 = hash_content(hashlib.md5)
 sha1 = hash_content(hashlib.sha1)

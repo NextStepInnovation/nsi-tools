@@ -105,6 +105,7 @@ setup(
             'getsubnets=nsi.cli.ips:get_subnets',
             'zpad=nsi.cli.ips:zpad_ips',
             'unzpad=nsi.cli.ips:unzpad_ips',
+            'nthash=nsi.cli.hashes:nt_hash',
             'nsi-render=nsi.cli.text:render_templates',
             'nsi-secrets-crawl=nsi.secrets_crawl:secrets_crawl',
             'nsi-dump-hashes=nsi.cli.hashes:dump_hashes',

@@ -51,3 +51,19 @@ def dump_hashes(inpath, sam, mscache):
             print,
         )
 
+@click.command()
+@click.argument('plaintext', required=False)
+@click.option('-p', '--print-plaintext', is_flag=True)
+def nt_hash(plaintext, print_plaintext):
+    if plaintext:
+        line_reader = [plaintext]
+    else:
+        line_reader = pipe(sys.stdin, map(lambda l: l[:-1]))
+    for line in line_reader:
+        pipe(
+            line,
+            nt,
+            lambda h: f'{line}\t{h}' if print_plaintext else h,
+            print,
+        )
+

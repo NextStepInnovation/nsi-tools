@@ -1,3 +1,4 @@
+from argparse import ArgumentError
 from pathlib import Path
 import random
 import traceback
@@ -10,6 +11,7 @@ import textwrap
 import inspect
 import statistics
 import importlib
+from click import Argument
 import multipledispatch
 import io
 from typing import *
@@ -429,18 +431,34 @@ def strip(value: str, chars=None):
     '''
     return value.strip(chars)
 
-@curry
-def split(value: str, sep: str = None, maxsplit=-1):
+def split(sep: Optional[str] = None, value: Optional[str] = None,  maxsplit=-1):
     '''In-line string split function
 
     Examples:
 
+    >>> split(None, 'a b') == ['a', 'b']
+    True
     >>> pipe('a b', split) == ['a', 'b']
     True
-    >>> pipe('a\tb', split(sep='\t')) == ['a', 'b']
+    >>> pipe('a\tb', split('\t')) == ['a', 'b']
     True
     '''
-    return value.split(sep, maxsplit)
+    if value is not None:
+        return value.split(sep, maxsplit)
+
+    def splitter(*args):
+        nonlocal sep, value, maxsplit
+        match args, sep:
+            case (), None:
+                raise ArgumentError(
+                    'Calling split with neither sep or value'
+                )
+            case (value,), None:
+                pass
+            case (value,), sep:
+                pass
+        return value.split(sep, maxsplit)
+    return splitter
 
 @curry
 def splitlines(value: streamable, keepends=False):
