@@ -87,7 +87,7 @@ def sort_ips(inpath, keepcomments, clipboard):
         content.splitlines(),
         _.map(_.noop if keepcomments else _.strip_comments),
         _.filter(lambda l: l.strip()),
-        _.filter(_.compose(_.is_ip, _.strip, _.strip_comments)),
+        _.filter(_.compose(_.is_ip, _.strip(), _.strip_comments)),
         _.sortips,
         '\n'.join,
         print if not clipboard else cb_copy_ensure_nl,

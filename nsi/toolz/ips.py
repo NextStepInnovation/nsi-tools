@@ -177,7 +177,7 @@ def ip_tuple(ip):
     return pipe(str(ip).split('.'), map(int), tuple)
 
 def sortips(ips):
-    return sort_by(compose(ip_address, strip, strip_comments), ips)
+    return sort_by(compose(ip_address, strip(), strip_comments), ips)
 sort_ips = sortips
 
 def get_ips_from_file(path):
@@ -192,7 +192,7 @@ def get_ips_from_lines(lines):
         lines,
         map(to_str),
         strip_comments,
-        filter(strip),
+        filter(strip()),
         mapcat(ip_re.findall),
         # filter(is_ip),
         # mapcat(ip_to_seq),
@@ -210,7 +210,7 @@ def get_networks_from_lines(lines):
         lines,
         map(to_str),
         strip_comments,
-        filter(strip),
+        filter(strip()),
         filter(is_network),
         tuple,
     )

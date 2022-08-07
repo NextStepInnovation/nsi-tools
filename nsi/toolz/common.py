@@ -1,4 +1,5 @@
 from argparse import ArgumentError
+from calendar import c
 from pathlib import Path
 import random
 import traceback
@@ -65,17 +66,18 @@ __all__ = [
     # common
     'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 'cconcatv',
     'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 'do_error',
-    'do_info', 'do_log', 'do_slice', 'error_raise', 'filter_t', 'find', 'first_true',
+    'do_info', 'do_log', 'do_slice', 'error_raise', 'endswith',
+    'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'get_t', 'help_text',
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int', 'is_numeric',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
     'is_some', 'is_not_none', 'is_str', 'items', 'log_lines', 
-    'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe',
+    'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe', 'maybe_call',
     'max', 'maybe_first', 'maybe_float', 'maybe_int', 'maybe_last',
     'maybe_max', 'maybe_min', 'maybe_pipe', 'maybe_second', 'min',
     'mini_tb', 'new_log', 'noop', 'replace', 'sc_juxt',
     'select', 'seti', 'seti_t', 'short_circuit', 'shuffled',
-    'sort_by', 'sorted', 'split', 'splitlines', 'starmap',
+    'sort_by', 'sorted', 'split', 'splitlines', 'starmap', 'startswith',
     'strip', 'to_io', 'to_bytes', 'to_str', 'upper', 'val',
     'vcall', 'vcallif', 'vdo', 'vfilter', 'vfind',
     'vgroupby', 'vindex', 'vitemmap', 'vkeymap', 'vmap',
@@ -311,11 +313,12 @@ def fmaybe(func):
         try:
             return maybe(func(*a, **kw))
         except Exception as error:
-            logging.error(
+            logging.exception(
                 f'Exception in {func}:\n\n{str(error)[:1000]}'
             )
         return Nothing()
     return maybe_monad
+maybe_call = fmaybe
 
 @curry
 def maybe_int(value, default=Nothing()):
@@ -418,18 +421,41 @@ def wrap_text(width, text, **wrap_kw):
         '\n'.join,
     )
 
-@curry
-def strip(value: str, chars=None):
+
+def strip(chars: Optional[str] = None, value: str = None):
     '''In-line string strip function
 
     Examples:
 
-    >>> pipe('  a  ', strip) == 'a'
+    >>> strip(None, '  a  ') == 'a'
+    True
+    >>> pipe('  a  ', strip()) == 'a'
+    True
+    >>> pipe('---a----', strip('-')) == 'a'
     True
     >>> pipe('---a----', strip(chars='-')) == 'a'
     True
     '''
-    return value.strip(chars)
+    if value is not None:
+        return value.strip(chars)
+
+    def strip_inner(*args):
+        nonlocal value, chars
+        match args, chars:
+            case (), None:
+                raise ArgumentError(
+                    'Calling strip with neither chars nor value'
+                )
+            case (value,), None:
+                pass
+            case (value,), chars:
+                pass
+            case too_many, chars:
+                raise ArgumentError(
+                    f'Too many arguments: {len(too_many)} with chars {chars}'
+                )
+        return value.strip(chars)
+    return strip_inner
 
 def split(sep: Optional[str] = None, value: Optional[str] = None,  maxsplit=-1):
     '''In-line string split function
@@ -438,10 +464,10 @@ def split(sep: Optional[str] = None, value: Optional[str] = None,  maxsplit=-1):
 
     >>> split(None, 'a b') == ['a', 'b']
     True
-    >>> pipe('a b', split) == ['a', 'b']
+    >>> pipe('a b', split()) == ['a', 'b']
     True
-    >>> pipe('a\tb', split('\t')) == ['a', 'b']
-    True
+    >>> pipe('a,b', split(','))
+    ['a', 'b']
     '''
     if value is not None:
         return value.split(sep, maxsplit)
@@ -457,6 +483,11 @@ def split(sep: Optional[str] = None, value: Optional[str] = None,  maxsplit=-1):
                 pass
             case (value,), sep:
                 pass
+            case too_many, sep:
+                raise ArgumentError(
+                    f'Too many arguments: {len(too_many)} with sep {sep}'
+                )
+
         return value.split(sep, maxsplit)
     return splitter
 
@@ -481,6 +512,14 @@ def lower(value: str):
 def upper(value: str):
     'In-line string upper function'
     return value.upper()
+
+@curry
+def startswith(prefix: Union[str, bytes], string: Union[str, bytes]):
+    return string.startswith(prefix)
+
+@curry
+def endswith(prefix: Union[str, bytes], string: Union[str, bytes]):
+    return string.startswith(prefix)
 
 def do_slice(start: int, stop: int = None, step: int = None):
     def slicer(value: str):

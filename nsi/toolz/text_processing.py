@@ -125,7 +125,7 @@ def xorlines(A: str, B: str):
 def html_list(items):
     items = pipe(
         items,
-        map(strip),
+        map(strip()),
         filter(None),
         tuple,
     )

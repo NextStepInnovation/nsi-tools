@@ -58,7 +58,7 @@ def nt_hash(plaintext, print_plaintext):
     if plaintext:
         line_reader = [plaintext]
     else:
-        line_reader = pipe(sys.stdin, map(lambda l: l[:-1]))
+        line_reader = pipe(sys.stdin, map(lambda l: l.rstrip()))
     for line in line_reader:
         pipe(
             line,
