@@ -1,4 +1,5 @@
 import re
+import json
 from pathlib import Path
 
 from setuptools import setup, find_packages
@@ -13,6 +14,10 @@ def version():
     raise AttributeError(
         'Could not find __version__ attribute in nsi/__init__.py'
     )
+
+def load_scripts():
+    scripts = json.loads(Path('scripts.json').read_text())
+    return [f'{script}={path}' for script, path in scripts]
 
 long_description = Path(HERE, 'README.md').resolve().read_text()
 
@@ -63,6 +68,7 @@ setup(
         'webdav',
         'xmljson',
         'openpyxl',
+        'pycomplete',
     ],
 
     version=version(),
@@ -94,47 +100,6 @@ setup(
     ],
 
     entry_points={
-        'console_scripts': [
-            'diffips=nsi.cli.ips:diff_ips',
-            'intips=nsi.cli.ips:int_ips',
-            'difflines=nsi.cli.text:diff_lines',
-            'intlines=nsi.cli.text:int_lines',
-            'sortips=nsi.cli.ips:sort_ips',
-            'sortbyips=nsi.cli.ips:sort_by_ips',
-            'getips=nsi.cli.ips:get_ips',
-            'getsubnets=nsi.cli.ips:get_subnets',
-            'zpad=nsi.cli.ips:zpad_ips',
-            'unzpad=nsi.cli.ips:unzpad_ips',
-            'nthash=nsi.cli.hashes:nt_hash',
-            'nsi-render=nsi.cli.text:render_templates',
-            'nsi-secrets-crawl=nsi.secrets_crawl:secrets_crawl',
-            'nsi-dump-hashes=nsi.cli.hashes:dump_hashes',
-            'nsi-e4l-users=nsi.cli.enum4linux:dump_users',
-            'nsi-msf-ips=nsi.cli.msf:dump_spool_ips',
-            'nsi-nmap-ports=nsi.cli.nmap:nse_ports',
-            'nsi-nmap-diffports=nsi.cli.nmap:diff_ports',
-            'nsi-smb-shares=nsi.cli.smb:enumerate_smb_shares',
-            'nsi-smb-ls=nsi.cli.smb:smb_ls',
-            'nsi-dirb=nsi.cli.http:dirb_ips',
-            'nsi-nikto=nsi.cli.http:nikto_ips',
-            'nsi-fping-subnets=nsi.cli.fping:fping_subnets',
-            'nsi-nmap=nsi.cli.nmap:nmap_hosts',
-            'nsi-nmap-services=nsi.cli.nmap:nmap_services',
-            'nsi-dns-resolve=nsi.cli.dns:dns_resolve',
-            # 'nsi-bh-list-computers=nsi.cli.bloodhound:bloodhound_list_computers',
-            # 'nsi-bh-list-users=nsi.cli.bloodhound:bloodhound_list_users',
-            # 'nsi-bh-list-groups=nsi.cli.bloodhound:bloodhound_list_groups',
-            'nsi-bh-list-computers=nsi.cli.bloodhound:list_computers',
-            'nsi-bh-list-users=nsi.cli.bloodhound:list_users',
-            'nsi-bh-list-groups=nsi.cli.bloodhound:list_groups',
-            'nsi-bh-group-members=nsi.cli.bloodhound:group_members',
-            'nsi-bh-user-groups=nsi.cli.bloodhound:user_groups',
-            'nsi-whois=nsi.cli.whois:whois_ips',
-            'nsi-ftp=nsi.cli.ftp:main',
-            'nsi-secretsdump=nsi.cli.secretsdump:dump',
-            'nsi-ntlm-resolve=nsi.cli.ntlm:resolve',
-            'nsi-ntlm-extract=nsi.cli.ntlm:extract',
-            'nsi-filesystem-meta=nsi.cli.filesystem:metadata',
-        ],
+        'console_scripts': load_scripts(),
     },
 )
