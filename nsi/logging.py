@@ -1,5 +1,12 @@
 import coloredlogs
-from .toolz import merge, new_log   # noqa
+import logging
+# Because the nsi.toolz submodule using this, avoiding circular import
+from toolz.curried import merge
+
+def new_log(name):
+    log = logging.getLogger(name)
+    log.addHandler(logging.NullHandler())
+    return log
 
 def setup_logging(loglevel: str, **config_kw):
     fmt = (

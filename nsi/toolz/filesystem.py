@@ -16,8 +16,6 @@ from .common import (
     pipe, call, concatv, vmapcat, curry, map, filter,
     new_log, splitlines, merge, memoize, deref,
 )
-from .time import maybe_dt
-from .. import shell
 
 log = new_log(__name__)
 

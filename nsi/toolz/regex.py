@@ -17,7 +17,7 @@ __all__ = [
     'igrep', 'grept', 'igrept', 'igrepv', 'igrepvt', 
     'grepvitems', 'groupdict', 'groupdicts',
     'groupdicts_from_regexes', 'match_d', 're_search', 'regex_transform', 
-    'to_regex', 'vbakedict',
+    'to_regex', 'vbakedict', 'finditer', 'finditerd', 'finditerd_t',
 ]
 
 # ----------------------------------------------------------------------
@@ -347,4 +347,20 @@ def regex_transform(regexes, text):
         text = regex.sub(replace, text)
     return text
 
+@curry
+def finditer(regex: str, content: str):
+    return to_regex(regex, re.M).finditer(content)
 
+@curry
+def finditerd(regex: str, content: str):
+    return pipe(
+        finditer(regex, content), 
+        map(lambda m: m.groupdict()),
+    )
+
+@curry
+def finditerd_t(regex: str, content: str):
+    return pipe(
+        finditerd(regex, content),
+        tuple,
+    )

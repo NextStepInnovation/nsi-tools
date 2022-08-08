@@ -1,9 +1,12 @@
+'''
+Superset of toolz API with quite a lot of extra bits in the toolz style
+'''
 try:
+    import cytoolz.curried as toolz
     from cytoolz.curried import *
-    import cytoolz.curried as _toolz
 except ImportError:
+    import toolz.curried as toolz
     from toolz.curried import *
-    import toolz.curried as _toolz
 
 from .common import *
 from .csv import *
@@ -69,46 +72,3 @@ __all__ = tuple(concatv(
     http.__all__,
 ))
 
-def toolz_imports():
-    from pathlib import Path
-    modules = pipe(
-        Path(__file__).parent.glob('*.py'), 
-        filter(lambda p: not p.name.startswith('_')),
-        tuple,
-    )
-    def f_names(p):
-        return pipe(
-            slurplines(p),
-            groupdicts(r'^(def (?P<name>.*?)\(|(?P<name>\w[\d\w_]*) = )'),
-            map(get('name')),
-            filter(lambda n: not n.startswith('_')),
-            filter(lambda n: n != 'log'),
-            sorted,
-        )
-    def grid(names):
-        return pipe(
-            names,
-            partition_all(5),
-            map(map(lambda s: f"'{s}'")),
-            map(', '.join),
-            map(lambda l: '    ' + l + ','),
-            '\n'.join,
-        )
-    def f_grid(p):
-        return pipe(
-            f_names(p),
-            grid,
-            lambda s: f'    # {p.stem}\n' + s
-        )
-    t_c = pipe(
-        dir(_toolz),
-        filter(lambda n: not n.startswith('_')),
-        grid,
-        lambda s: f'    # toolz.curried\n' + s
-    )
-    return pipe(
-        modules,
-        map(f_grid),
-        lambda l: concat([(t_c,), l]),
-        '\n\n'.join,
-    )

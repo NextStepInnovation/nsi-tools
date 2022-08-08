@@ -6,26 +6,23 @@ import typing as T
 import click
 import pyperclip
 
+from nsi.toolz.filesystem import ensure_paths
+
 from .. import logging
-from .. import toolz as _
+#from .. import toolz as _
+from ..toolz import curry, clipboard_paste, compose, ensure_paths
 from .. import ssh
 
 log = logging.new_log(__name__)
 
-@_.curry
-def _exit_with_msg(logger, msg):
-    ctx = click.get_current_context()
-    click.echo(ctx.get_help())
-    logger.error(msg)
-    raise click.Abort()
-
-exit_with_msg = _exit_with_msg(log)
-
-def get_input_content(inpath, clipboard=False):
+@ensure_paths
+def get_input_content(inpath: Path, clipboard: bool=False):
+    '''Get input data from either input Path, clipboard, or stdin
+    '''
     if inpath:
         content = Path(inpath).read_text()
     elif clipboard:
-        content = _.clipboard_paste()
+        content = clipboard_paste()
     else:
         content = sys.stdin.read()
     return content
@@ -36,14 +33,14 @@ def path_cb_or_stdin(inpath: T.Union[str, Path], clipboard: bool):
         return Path(inpath).read_text()
     elif clipboard:
         log.info('Getting input from clipboard...')
-        return _.clipboard_paste()
+        return clipboard_paste()
     log.info('Getting input from stdin...')
     return sys.stdin.read()
 
 def cb_or_stdin(clipboard):
     if clipboard:
         log.info('Getting input from clipboard...')
-        return _.clipboard_paste()
+        return clipboard_paste()
     log.info('Getting input from stdin...')
     return sys.stdin.read()
 
@@ -59,7 +56,7 @@ def ssh_getoutput(host: str, **ssh_kw):
     log.info(f'[ssh_getoutput] SSH args: host={host} kwargs={ssh_kw}')
     return ssh.getoutput(host, **ssh_kw)
 
-ssh_options = _.compose(
+ssh_options = compose(
     click.option(
         '--ssh',
         help=(
@@ -68,7 +65,7 @@ ssh_options = _.compose(
     ),
 )
 
-input_options = _.compose(
+input_options = compose(
     click.option(
         '-i', '--ippath', type=click.Path(
             exists=True, dir_okay=False, resolve_path=True,
@@ -81,7 +78,7 @@ input_options = _.compose(
     ),
 )
 
-impacket_input_options = _.compose(
+impacket_input_options = compose(
     input_options,
     click.option(
         '-s', '--sam-path',
@@ -107,7 +104,7 @@ def get_content(inpath, clipboard=False):
         content = sys.stdin.read()
     return content
 
-inpath = _.compose(
+inpath = compose(
     click.option(
         '-i', '--inpath', type=click.Path(
             exists=True, dir_okay=False, resolve_path=True,
@@ -116,7 +113,7 @@ inpath = _.compose(
     )
 )
 
-outdir = _.compose(
+outdir = compose(
     click.option(
         '-o', '--outdir', type=click.Path(
             file_okay=False, dir_okay=True, resolve_path=True,
@@ -125,23 +122,23 @@ outdir = _.compose(
     )
 )
 
-from_clipboard = _.compose(
+from_clipboard = compose(
     click.option(
         '-c', '--from-clipboard', is_flag=True,
         help=('Get IPs from clipboard'),
     ),
 )
 
-to_clipboard = _.compose(
+to_clipboard = compose(
     click.option(
         '-C', '--to-clipboard', is_flag=True,
         help=('Send output to clipboard'),
     ),
 )
 
-input_with_clipboard = _.compose(inpath, from_clipboard, to_clipboard)
+input_with_clipboard = compose(inpath, from_clipboard, to_clipboard)
 
-loglevel = _.compose(
+loglevel = compose(
     click.option(
         '--loglevel', default='info', 
         type=click.Choice(
@@ -151,7 +148,7 @@ loglevel = _.compose(
     )
 )
 
-cred_options = _.compose(
+cred_options = compose(
     click.option(
         '-u', '--username', default='',
         help=('User name with which to authenticate (default: NULL)'),
@@ -166,10 +163,23 @@ cred_options = _.compose(
     ),
 )
 
-impacket_cred_options = _.compose(
+impacket_cred_options = compose(
     cred_options,
     click.option(
         '-h', '--hashes',
         help=('NTLM hash with which to authenticate.'),
     ),
 )
+
+@curry
+def _exit_with_msg(logger, msg):
+    ctx = click.get_current_context()
+    click.echo(ctx.get_help())
+    logger.error(msg)
+    raise click.Abort()
+
+# VS Code labels everthing after this as dead code since it (understandably)
+# doesn't understand toolz curry objects
+
+exit_with_msg = _exit_with_msg(log)
+

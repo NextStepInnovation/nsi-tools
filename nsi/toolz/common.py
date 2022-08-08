@@ -22,29 +22,16 @@ import chardet
 
 maybe = _maybe
 
-# try:
-#     from cytoolz.curried import (
-#         accumulate, apply, assoc, assoc_in, comp,
-#         complement, compose, compose_left, concat, concatv,
-#         cons, count, countby, curry, diff,
-#         dissoc, do, drop, excepts, filter,
-#         first, flip, frequencies, get, get_in,
-#         groupby, identity, interleave, interpose, isdistinct,
-#         isiterable, itemfilter, itemmap, iterate, join,
-#         juxt, keyfilter, keymap, last, map,
-#         mapcat, memoize, merge, merge_sorted, merge_with,
-#         nth, operator, partial, partition, partition_all,
-#         partitionby, peek, peekn, pipe, pluck,
-#         random_sample, reduce, reduceby, remove, second,
-#         sliding_window, sorted, tail, take, take_nth,
-#         thread_first, thread_last, topk, unique, update_in,
-#         valfilter, valmap,
-#     )
-# except ImportError:
-#     from toolz.curried import *
-from toolz.curried import *
+try:
+    from cytoolz.curried import *
+except ImportError:
+    from toolz.curried import *
+
+from ..logging import new_log
 
 __all__ = [
+    'new_log',
+
     # toolz.curried
     'accumulate', 'apply', 'assoc', 'assoc_in', 'comp',
     'complement', 'compose', 'compose_left', 'concat', 'concatv',
@@ -75,7 +62,7 @@ __all__ = [
     'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe', 'maybe_call',
     'max', 'maybe_first', 'maybe_float', 'maybe_int', 'maybe_last',
     'maybe_max', 'maybe_min', 'maybe_pipe', 'maybe_second', 'min',
-    'mini_tb', 'new_log', 'noop', 'replace', 'sc_juxt',
+    'mini_tb', 'noop', 'replace', 'sc_juxt',
     'select', 'seti', 'seti_t', 'short_circuit', 'shuffled',
     'sort_by', 'sorted', 'split', 'splitlines', 'starmap', 'startswith',
     'strip', 'to_io', 'to_bytes', 'to_str', 'upper', 'val',
@@ -93,11 +80,6 @@ dispatch = multipledispatch.dispatch
 # Logging operations
 #
 # ----------------------------------------------------------------------
-
-def new_log(name):
-    log = logging.getLogger(name)
-    log.addHandler(logging.NullHandler())
-    return log
 
 log = new_log(__name__)
 

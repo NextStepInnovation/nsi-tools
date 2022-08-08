@@ -1,3 +1,3 @@
 from . import (
-    api, reports, assets,
+    api, reports, assets, config,
 )

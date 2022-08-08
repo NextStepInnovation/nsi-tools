@@ -1,6 +1,7 @@
 import typing as T
 import pprint
 
+import urllib3
 import requests
 import requests.auth
 
@@ -194,15 +195,17 @@ class ProxyDict(T.TypedDict):
     http: Url
 
 @curry
-def new_api(host: str, port: int, username: str, password: str, *,
+def new_api(hostname: str, port: int, username: str, password: str, *,
             proxies: ProxyDict = None, verify: bool | str = False):
     session = requests.Session()
     session.auth = requests.auth.HTTPBasicAuth(username, password)
     if proxies:
         session.proxies = proxies
     session.verify = verify
+    if not verify:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     return Api(
-        f'https://{host}:{port}/api/3', session
+        f'https://{hostname}:{port}/api/3', session
     )
 
 @curry

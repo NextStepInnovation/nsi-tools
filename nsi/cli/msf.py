@@ -1,4 +1,4 @@
-'''Tools for dealing with enum4linux output
+'''Tools for dealing with metasploit output and products
 '''
 import sys
 import re
