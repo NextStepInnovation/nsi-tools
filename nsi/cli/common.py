@@ -15,16 +15,16 @@ from .. import ssh
 
 log = logging.new_log(__name__)
 
-@ensure_paths
-def get_input_content(inpath: Path, clipboard: bool=False):
+def get_input_content(inpath: T.Optional[T.Union[Path, str]], clipboard: bool=False):
     '''Get input data from either input Path, clipboard, or stdin
     '''
     if inpath:
-        content = Path(inpath).read_text()
+        content = Path(inpath).expanduser().read_text()
     elif clipboard:
         content = clipboard_paste()
     else:
         content = sys.stdin.read()
+    log.debug(repr(content))
     return content
 
 def path_cb_or_stdin(inpath: T.Union[str, Path], clipboard: bool):

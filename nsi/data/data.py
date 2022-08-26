@@ -30,7 +30,7 @@ def random_user_agent():
 @memoize
 def nmap_services(path='nmap-services'):
     return pipe(
-        Path(path).read_text().splitlines(),
+        Path(resource_filename(path)).read_text().splitlines(),
         strip_comments,
         filter(None),
         map(lambda l: l.split('\t')[:3]),

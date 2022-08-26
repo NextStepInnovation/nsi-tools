@@ -1,10 +1,18 @@
 import time
+import typing as T
 
 from .. import logging
 from ..toolz import *
 from ..rest import Api, get_json
+
+from .types import (
+    AssetList,
+)
 from .api import (
     get_iterator, NexposeApiError, 
+)
+from .sites import (
+    SiteId, get_site,
 )
 
 log = logging.new_log(__name__)
@@ -67,6 +75,77 @@ def wait_for_report(api: Api, report_id: int, instance_id: int,
             '\n'
             f'{response.content.decode()}'
         )
+
+'''
+      name: '{{ reports.nexpose_xml.path }}'
+      format: xml-export-v2
+      scope:
+        sites:
+          - '{{ site }}'
+      filters:
+        severity: all
+        statuses:
+          - vulnerable-version
+          - vulnerable
+          - potentially-vulnerable
+'''
+
+def new_report_body(api: Api, site_ids: T.Iterator[SiteId], 
+                    asset_ids: AssetList):
+    sites = [
+        get_site(api, site_id) for site_id in site_ids
+    ]
+    assets = [
+        get_asset(api, asset_id) for asset_id in asset_ids
+    ]
+
+    scope = {
+        'sites': [
+            s['id'] for s in sites
+        ]
+    }
+    def in_all(ids):
+        return pipe((set(ids) & all_asset_ids()), sorted)
+
+    return pipe(
+        options,
+        only_if_key('template', update_key(
+            'template',
+            lambda body: template_id(body['template'])
+        )),
+
+        only_if_key('scope', update_key(
+            'scope',
+            lambda body: pipe(
+                body['scope'],
+                only_if_key('assets', update_key(
+                    'assets',
+                    lambda scope: pipe(
+                        asset_ids(api, scope['assets']),
+                        in_all,
+                    )
+                )),
+                only_if_key('sites', update_key(
+                    'sites',
+                    lambda scope: sites_ids(api, scope['sites'])
+                )),
+                only_if_key('groups', switch_keys(
+                    'groups', 'assetGroups', lambda d: d['groups']
+                )),
+            )
+        )),
+
+        only_if_key('filters', update_key(
+            'filters',
+            lambda body: merge(
+                {'severity': 'all',
+                 'statuses': ['vulnerable-version',
+                              'vulnerable',
+                              'potentially-vulnerable']},
+                body['filters']
+            )
+        )),
+    )
 
 def new_report(api: Api, body: dict):
     response = api('reports').post(json=body)
@@ -132,51 +211,4 @@ def destroy_report(api: Api, report_id: int, instance_id: int):
         return False
 
     return True
-
-def report_body(api: Api, site_name: str, options: dict):
-    def all_asset_ids():
-        return all_site_asset_ids(api, site_name)
-
-    def in_all(ids):
-        return pipe((set(ids) & all_asset_ids()), sorted)
-
-    return pipe(
-        options,
-        only_if_key('template', update_key(
-            'template',
-            lambda body: template_id(body['template'])
-        )),
-
-        only_if_key('scope', update_key(
-            'scope',
-            lambda body: pipe(
-                body['scope'],
-                only_if_key('assets', update_key(
-                    'assets',
-                    lambda scope: pipe(
-                        asset_ids(api, scope['assets']),
-                        in_all,
-                    )
-                )),
-                only_if_key('sites', update_key(
-                    'sites',
-                    lambda scope: sites_ids(api, scope['sites'])
-                )),
-                only_if_key('groups', switch_keys(
-                    'groups', 'assetGroups', lambda d: d['groups']
-                )),
-            )
-        )),
-
-        only_if_key('filters', update_key(
-            'filters',
-            lambda body: merge(
-                {'severity': 'all',
-                 'statuses': ['vulnerable-version',
-                              'vulnerable',
-                              'potentially-vulnerable']},
-                body['filters']
-            )
-        )),
-    )
 

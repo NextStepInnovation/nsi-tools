@@ -2,15 +2,19 @@ import urllib
 import urllib.parse
 import typing as T
 import functools
+import textwrap
+import keyword
 from collections import namedtuple
 
 import requests
+import networkx as nx
 from pyrsistent import pmap, PMap
 
-import nsi
-from nsi.toolz import *
+from . import logging
+from .templates import render
+from .toolz import *
 
-log = nsi.logging.new_log(__name__)
+log = logging.new_log(__name__)
 
 class TokenAuth(requests.auth.AuthBase):
     def __init__(self, token):
@@ -224,3 +228,106 @@ HttpMethod = T.Callable[
         # **kwargs
     ], requests.Response
 ]
+
+#----------------------------------------------------------------------------
+# Swagger functionality
+#----------------------------------------------------------------------------
+
+# name_to_type = {
+#     'ip': 'Ip',
+#     'protocol': 'Protocol',
+#     'url': 'Url',
+#     'href': 'Url',
+#     'port': 'Port',
+#     'mac': 'Mac',
+# }
+type_map = {
+    'integer': 'int',
+    'string': 'str',
+    'object': 'str',
+    'number': 'float',
+    'boolean': 'bool'
+}
+
+def get_ref(ref_str: str):
+    return ref_str.split('/')[-1]
+
+def def_edges(japi: dict, def_name: str):
+    for name, prop in japi['definitions'][def_name]['properties'].items():
+        match prop:
+            case {'$ref': ref_str}:
+                ref = get_ref(ref_str)
+                yield (def_name, ref)
+                yield from def_edges(japi, ref)
+            case {'type': 'array', 'items': {'$ref': ref_str}}:
+                ref = get_ref(ref_str)
+                yield (def_name, ref)
+                yield from def_edges(japi, ref)
+
+def_graph = compose_left(def_edges, from_edgelist(factory=nx.DiGraph))
+
+class DefProperty(T.TypedDict):
+    name: str
+    type: str
+
+def def_properties(japi: dict, def_name: str) -> T.Iterable[DefProperty]:
+    for name, prop in japi['definitions'][def_name]['properties'].items():
+        out_prop = {'name': name}
+        match prop:
+            # case _special if name in name_to_type:
+            #     yield merge(out_prop, {'type': name_to_type[name]})
+            case {'type': ptype} if ptype in type_map:
+                yield merge(out_prop, {'type': type_map[ptype]})
+            case {'$ref': ref_str}:
+                ref = get_ref(ref_str)
+                yield merge(out_prop, {'type': ref})
+            case {'type': 'array', 'items': array_items}:
+                match array_items:
+                    case {'$ref': ref_str}:
+                        ref = get_ref(ref_str)
+                        yield merge(out_prop, {'type': f'T.Sequence[{ref}]'})
+                    case {'type': atype} if atype in type_map:
+                        atype = type_map[atype]
+                        yield merge(out_prop, {'type': f'T.Sequence[{atype}]'})
+
+def_td_class_bp = '''
+class {{ name }}(T.TypedDict):
+    {%- for prop in properties %}
+    {{ prop.name }}: {{ prop.type }}
+    {%- endfor %}
+'''
+
+def_td_expr_bp = '''
+{{ name }} = T.TypedDict('{{ name }}', {
+    {%- for prop in properties %}
+    '{{ prop.name }}': {{ prop.type }},
+    {%- endfor %}
+})
+'''
+
+def valid_var(prop: DefProperty):
+    name = prop['name']
+    return name.isidentifier() and not keyword.iskeyword(name)
+
+def def_codes(japi: dict, *root_defs: T.Tuple[str]):
+    total_graph = nx.DiGraph()
+    for root_def in root_defs:
+        digraph = def_graph(japi, root_def)
+        total_graph = nx.compose(total_graph, digraph)
+    
+    names = pipe(
+        total_graph,
+        nx.transitive_closure,
+        lambda g: g.out_degree,
+        dict,
+        items,
+        sort_by(second),
+        map(first)
+    )
+    for def_name in names:
+        properties = tuple(def_properties(japi, def_name))
+        if pipe(properties, map(valid_var), all):
+            bp = def_td_class_bp
+        else:
+            bp = def_td_expr_bp
+        yield render(bp, name=def_name, properties=properties)

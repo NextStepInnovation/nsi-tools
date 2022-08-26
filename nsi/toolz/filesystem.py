@@ -101,22 +101,23 @@ def ensure_paths(func, *, expanduser: bool=True, resolve: bool=False):
     }
 
     @functools.wraps(func)
-    def path_arg_converter(*a, **kw):
-        pos = [i for i in pos_params if i < len(a)]
+    def path_arg_converter(*args, **kwargs):
+        pos = [i for i in pos_params if i < len(args)]
 
-        a = list(a)
+        args = list(args)
         for i in pos:
-            a[i] = Path(a[i])
+            log.debug(args[i])
+            args[i] = Path(args[i])
             if expanduser:
-                a[i] = a[i].expanduser()
-        for k, v in kw.items():
+                args[i] = args[i].expanduser()
+        for k, v in kwargs.items():
             if k in path_params:
-                kw[k] = Path(v)
+                kwargs[k] = Path(v)
                 if expanduser:
-                    kw[k] = kw[k].expanduser()
+                    kwargs[k] = kwargs[k].expanduser()
                 if resolve:
-                    kw[k] = kw[k].resolve()
-        return func(*a, **kw)
+                    kwargs[k] = kwargs[k].resolve()
+        return func(*args, **kwargs)
     return path_arg_converter
 
 ensure_paths_curry = compose(

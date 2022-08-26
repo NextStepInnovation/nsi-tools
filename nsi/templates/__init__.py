@@ -21,4 +21,5 @@ from .functions import (
 from .environments import (
     get_env,
     get_metatemplate_env,
+    render,
 )

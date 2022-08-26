@@ -22,6 +22,10 @@ def get_env(path: Path = None, *,
         functions.nsi_functions(**(extra_functions or {})),
     )
 
+@curry
+def render(template_str: str, **render_args):
+    return get_env().from_string(template_str).render(**render_args)
+
 def get_metatemplate_env(path: T.Union[str, Path] = None, *,
                          extra_filters: T.Dict[str, T.Callable] = None,
                          extra_functions: T.Dict[str, T.Callable] = None):

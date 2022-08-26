@@ -4,61 +4,62 @@ import pprint
 import urllib3
 import requests
 import requests.auth
+from requests import Response, Request
 
 import nsi
-from nsi.toolz import *
-from nsi.rest import Api, HttpMethod, get_json
+from ..toolz import *
+from ..rest import Api, HttpMethod, get_json
 
 log = nsi.logging.new_log(__name__)
 
 class NexposeApiError(IOError):
     pass
 
-def kw_tuple_to_dict(kw_seq: T.Sequence[T.Tuple[str, T.Any]]):
-    '''
-    Convert (key, value) tuple into dictionary while progressively merging
-    values that are dictionaries. Purpose: allow for call-stack modification of
-    kw arguments.
+# def kw_tuple_to_dict(kw_seq: T.Sequence[T.Tuple[str, T.Any]]):
+#     '''
+#     Convert (key, value) tuple into dictionary while progressively merging
+#     values that are dictionaries. Purpose: allow for call-stack modification of
+#     kw arguments.
     
-    '''
-    args = {}
-    for (kw, value) in kw_seq:
-        if type(value) is dict:
-            args[kw] = merge(args.get(kw, {}), value)
-        else:
-            args[kw] = value
-    return args
+#     '''
+#     args = {}
+#     for (kw, value) in kw_seq:
+#         if type(value) is dict:
+#             args[kw] = merge(args.get(kw, {}), value)
+#         else:
+#             args[kw] = value
+#     return args
 
-def resources_iter(method, *kw_tuple, **kw):
-    kwargs = kw_tuple_to_dict(kw_tuple)
+# def resources_iter(method, *kw_tuple, **kw):
+#     kwargs = kw_tuple_to_dict(kw_tuple)
 
-    params = kwargs.get('params', {})
-    size = params.get('size', 'unknown')
+#     params = kwargs.get('params', {})
+#     size = params.get('size', 'unknown')
 
-    log.info(
-        f'    page: 0 of-size: {size} for method: {method}'
-    )
-    response = method(**kwargs)
-    json = fmaybe(response.json)().or_else({})
+#     log.info(
+#         f'    page: 0 of-size: {size} for method: {method}'
+#     )
+#     response = method(**kwargs)
+#     json = fmaybe(response.json)().or_else({})
 
-    if json.get('page'):
-        for value in json.get('resources', []):
-            yield value
+#     if json.get('page'):
+#         for value in json.get('resources', []):
+#             yield value
 
-        for page_i in range(1, json['page']['totalPages']):
-            log.info(
-                f'    page: {page_i} of-size: {json["page"].get("size")}'
-                f' for method: {method}'
-            )
-            response = method(
-                **assoc(kwargs, 'params', merge(params, {'page': page_i}))
-            )
-            json = fmaybe(response.json)().or_else({})
-            for value in json.get('resources', []):
-                yield value
-    else:
-        for value in json.get('resources', []):
-            yield value
+#         for page_i in range(1, json['page']['totalPages']):
+#             log.info(
+#                 f'    page: {page_i} of-size: {json["page"].get("size")}'
+#                 f' for method: {method}'
+#             )
+#             response = method(
+#                 **assoc(kwargs, 'params', merge(params, {'page': page_i}))
+#             )
+#             json = fmaybe(response.json)().or_else({})
+#             for value in json.get('resources', []):
+#                 yield value
+#     else:
+#         for value in json.get('resources', []):
+#             yield value
 
 Url = T.NewType('Url', str)
 Status = T.NewType('Status', str)
@@ -129,16 +130,31 @@ def log_error(error: Error):
                 'STATUS: 503 (Service Unavailable). Check server logs.'
             )
 
-@curry
-def merge_params(params, kwargs):
-    return assoc(kwargs, 'params', merge(
-        kwargs['params'], params
-    ))
+def handle_error(error_prefix: str, response: Response):
+    error = get_json(response)
+    log.error(
+        f'{error_prefix}:'
+    )
+    log.error(
+        f'  {error["message"]}'
+    )
+    if 'messages' in error:
+        for m in error['messages']:
+            log.error(f'  - {m}')
+    return False, error
 
 @curry
-def iter_resources(method: requests.Response, size=500, **kwargs):
+def merge_params(params: dict, kwargs: dict):
+    return assoc(kwargs, 'params', merge(
+        kwargs.get('params', {}), params
+    ))
+
+RequestMethod = T.Callable[[T.ParamSpecArgs, T.ParamSpecKwargs], Response]
+
+@curry
+def iter_resources(method: RequestMethod, size: int, **kwargs):
     '''
-    Automatically iterate over resources using progressive page sizing
+    Automatically iterate over paginated resources
     '''
     kwargs = pipe(
         kwargs,
@@ -147,43 +163,38 @@ def iter_resources(method: requests.Response, size=500, **kwargs):
         }),
     )
 
-    match pipe(method(**kwargs), get_json):
-        case {
-            'resources': resources, 
-            'page': {
-                'number': page_no,
-                'size': page_size,
-                'totalResources': n_resources,
-                'totalPages': n_pages
-            }, 
-            'links': link_seq
-            } as paged_json:
-            for resource in resources:
-                yield resource
-            links = links_dict(link_seq)
-            if 'next' in links:
-                yield from iter_resources(method, pipe(
-                    kwargs,
-                    merge_params({'page': page_no + 1})
-                ))
-        case {
-            'links': link_seq,
-            'message': message,
-            'status': status
-            } as error:
-            # Something went wrong
-            log_error(error)
-        case {
-            'id': item_id,
-            } as item_json:
-            yield item_json
-iter_500 = iter_resources(params={'size': 500})
+    match method(**kwargs):
+        case Response(status_code=200 | 201) as success:
+            match get_json(success):
+                case {'resources': resources, 
+                      'page': {
+                          'number': page_no,
+                          'size': _page_size,
+                          'totalResources': _n_resources,
+                          'totalPages': _n_pages
+                        }, 
+                      'links': link_seq}:
+
+                    for resource in resources:
+                        yield resource
+
+                    if 'next' in links_dict(link_seq):
+                        yield from iter_resources(method, pipe(
+                            kwargs,
+                            merge_params({'page': page_no + 1})
+                        ))
+
+                case {'id': _item_id} as json_with_id:
+                    yield json_with_id
+
+        case error:
+            return handle_error('Error getting resource', error)
 
 @curry
-def get_resources(n: int, method):
-    return partial(resources_iter, method, ('params', {'size': n}))
-get_by_50s = get_resources(50)
-get_by_500s = get_resources(500)
+def iter_resources_by(page_size: int, method: RequestMethod):
+    return partial(iter_resources, method, page_size)
+iter_by_50s = iter_resources_by(50)
+iter_by_500s = iter_resources_by(500)
 
 ResourceGetter = T.Callable[
     [HttpMethod], T.Dict
@@ -209,6 +220,48 @@ def new_api(hostname: str, port: int, username: str, password: str, *,
     )
 
 @curry
-def get_iterator(path: T.Sequence[T.Any], api: Api, 
-                 resource_getter: ResourceGetter = get_by_50s):
-    return resource_getter(api(*path).get)
+def resource_iterator(path: T.Sequence[T.Union[str, int]], api: Api, method: str, 
+                      resource_iterator: ResourceGetter, **request_kwargs):
+    return resource_iterator(
+        partial(getattr(api(*path), method), **request_kwargs)
+    )
+
+get_iterator = resource_iterator(method='get', resource_iterator=iter_by_50s)
+get_iterator500 = resource_iterator(method='get', resource_iterator=iter_by_500s)
+post_iterator = resource_iterator(method='post', resource_iterator=iter_by_50s)
+post_iterator500 = resource_iterator(method='post', resource_iterator=iter_by_500s)
+
+# @curry
+# def get_iterator(path: T.Sequence[T.Union[str, int]], api: Api, 
+#                  resource_getter: ResourceGetter = get_by_50s, **get_kwargs):
+#     return resource_getter(partial(api(*path).get, **get_kwargs))
+# get_iterator500 = get_iterator(resource_getter=get_by_500s)
+
+
+@curry
+def method_body(obj_type: str, method: str, key_map: dict, site: dict, 
+                new_body: dict):
+    valid_keys = set(key_map.values())
+
+    body = {}
+    for site_key, method_key in key_map.items():
+        if site_key in site:
+            body[method_key] = site[site_key]
+        if site_key != method_key and site_key in new_body:
+            new_body = pipe(
+                new_body,
+                lambda d: assoc(d, method_key, d[site_key]),
+                lambda d: dissoc(d, site_key),
+            )
+    final = merge(body, new_body)
+    spurious = set(final) - set(valid_keys)
+    if spurious:
+        log.error(
+            f'The following keys for {obj_type} {method}'
+            f' are spurious: {", ".join(sorted(spurious))}'
+        )
+    log.debug(f'final {obj_type} {method} body:')
+    for line in pipe(pprint.pformat(final), splitlines):
+        log.debug(line)
+    return final
+

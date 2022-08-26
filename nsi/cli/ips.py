@@ -7,8 +7,9 @@ import click
 
 from .. import toolz as _
 from .common import (
-    get_input_content
+    get_input_content, loglevel,
 )
+from ..logging import setup_logging
 from ..yaml import dump as dump_yaml
 
 cb_copy_ensure_nl = _.compose(
@@ -25,10 +26,12 @@ cb_copy_ensure_nl = _.compose(
     'pathb',
     type=click.Path(exists=True),
 )
-def diff_ips(patha, pathb):
+@loglevel
+def diff_ips(patha, pathb, loglevel):
     '''Given PATHA and PATHB of IPs, print difference (A-B)
 
     '''
+    setup_logging(loglevel)
     ips_a = set(_.get_ips_from_file(patha))
     ips_b = set(_.get_ips_from_file(pathb))
 
@@ -50,7 +53,11 @@ def diff_ips(patha, pathb):
     'pathb',
     type=click.Path(exists=True),
 )
-def int_ips(patha, pathb):
+@loglevel
+def int_ips(patha, pathb, loglevel):
+    '''
+    '''
+    setup_logging(loglevel)
     ips_a = set(_.get_ips_from_file(patha))
     ips_b = set(_.get_ips_from_file(pathb))
 
@@ -75,12 +82,14 @@ def int_ips(patha, pathb):
     '-C', '--clipboard', is_flag=True,
     help=('Get IPs from clipboard, send sorted to clipboard'),
 )
-def sort_ips(inpath, keepcomments, clipboard):
+@loglevel
+def sort_ips(inpath, keepcomments, clipboard, loglevel):
     '''Given a list of IPs (one per line) from a file path (INPATH), the
     clipboard (-C), or stdin if nothing provided, print in sorted
     order (to stdout unless -C is provided).
 
     '''
+    setup_logging(loglevel)
     content = get_input_content(inpath, clipboard)
 
     return _.pipe(
@@ -107,7 +116,8 @@ def sort_ips(inpath, keepcomments, clipboard):
     '-C', '--clipboard', is_flag=True,
     help=('Get IPs from clipboard, send sorted to clipboard'),
 )
-def sort_by_ips(inpath, keep_non_ip, clipboard):
+@loglevel
+def sort_by_ips(inpath, keep_non_ip, clipboard, loglevel):
     '''
     Given a list of lines containing an IP (one per line) from a file path
     (INPATH), the clipboard (-C), or stdin if nothing provided, print in sorted
@@ -117,6 +127,7 @@ def sort_by_ips(inpath, keep_non_ip, clipboard):
     lines go after if --keep-non-ip is provided.
 
     '''
+    setup_logging(loglevel)
     content = get_input_content(inpath, clipboard)
     get_ip_from_str = _.compose_left(_.get_ips_from_str, _.maybe_first)
     def sort_by_ips(lines):
@@ -167,13 +178,15 @@ def sort_by_ips(inpath, keep_non_ip, clipboard):
     '--yaml', is_flag=True,
     help='Output should be in yaml form'
 )
-def get_subnets(inpath, slash, from_clipboard, to_clipboard, yaml):
+@loglevel
+def get_subnets(inpath, slash, from_clipboard, to_clipboard, yaml, loglevel):
     ''''Given a list of IP addresses from a file path (INPATH), the
     clipboard (-C), or stdin (if nothing provided), print in sorted
     order (to stdout unless -C is provided) all the IP networks of a
     certain size (-s {16, 24})
 
     '''
+    setup_logging(loglevel)
     content = get_input_content(inpath, from_clipboard)
 
     def get_network(ip):
@@ -220,13 +233,15 @@ def get_subnets(inpath, slash, from_clipboard, to_clipboard, yaml):
     '-u', '--unique', is_flag=True,
     help='Print only unique IPs',
 )
-def get_ips(inpath, from_clipboard, to_clipboard, prefix, stdout, 
+@loglevel
+def get_ips(inpath, from_clipboard, to_clipboard, prefix, stdout, loglevel, 
             no_sort, unique):
     '''Given a text block containing IPs from a file path (INPATH), the
     clipboard (-c), or stdin if nothing provided, print in sorted
     order (to stdout unless -C is provided) all the IPs
 
     '''
+    setup_logging(loglevel)
     content = get_input_content(inpath, from_clipboard)
             
     return _.pipe(
@@ -265,13 +280,15 @@ def get_ips(inpath, from_clipboard, to_clipboard, prefix, stdout,
     '-u', '--unique', is_flag=True,
     help='Print only unique IPs',
 )
-def zpad_ips(inpath, from_clipboard, to_clipboard, stdout, no_sort, unique):
+@loglevel
+def zpad_ips(inpath, from_clipboard, to_clipboard, stdout, no_sort, unique, loglevel):
     '''Given a text block containing IPs from a file path (INPATH), the
     clipboard (-c), or stdin if nothing provided, print in sorted
     order (to stdout unless -C is provided) all the IPs with octets
     padded with zeros.
 
     '''
+    setup_logging(loglevel)
     content = get_input_content(inpath, from_clipboard)
             
     return _.pipe(
@@ -309,13 +326,15 @@ def zpad_ips(inpath, from_clipboard, to_clipboard, stdout, no_sort, unique):
     '-u', '--unique', is_flag=True,
     help='Print only unique IPs',
 )
-def unzpad_ips(inpath, from_clipboard, to_clipboard, stdout, no_sort, unique):
+@loglevel
+def unzpad_ips(inpath, from_clipboard, to_clipboard, stdout, no_sort, unique, loglevel):
     '''Given a text block containing IPs from a file path (INPATH), the
     clipboard (-c), or stdin if nothing provided, print in sorted
     order (to stdout unless -C is provided) all the zero-padded IPs
     formatted as normal IPs.
 
     '''
+    setup_logging(loglevel)
     content = get_input_content(inpath, from_clipboard)
             
     return _.pipe(
