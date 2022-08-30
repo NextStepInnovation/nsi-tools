@@ -45,7 +45,7 @@ KNOWN_USERS = ['Administrator', 'Guest', 'krbtgt', 'root', 'bin']
 TIMEOUT_KEY = 'NSI_SMB_MIN_TIMEOUT'
 
 str_command = compose_left(
-    map(strip),
+    map(strip()),
     filter(None),
     ' '.join,
 )
