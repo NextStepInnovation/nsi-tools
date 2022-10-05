@@ -6,7 +6,10 @@ import markdown as _markdown
 from . import (
     meta_yaml, card, table, yaml_data, image_fig,
 )
-from ..toolz import *
+from ..toolz import (
+    pipe, curry, concatv, merge, is_seq, compose_left, splitlines,
+    map, filter,
+)
 from .. import logging
 
 log = logging.new_log(__name__)
@@ -60,7 +63,8 @@ def markdown(content: str, *, extensions: T.Sequence[str] = None,
     output.meta = md.meta or {}
     return output
 
-def make_table(columns=None, col_map=None):
+def make_table(columns=None, col_map=None, 
+               columns_as_code: T.Sequence[int|str] = None):
     '''Functional markdown table maker. Given columns (i.e. row dict keys) and
     map from those keys to final header names, return table-making function that
     takes an iterable of rows and produces a markdown table.

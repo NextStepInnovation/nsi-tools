@@ -1,11 +1,12 @@
+import typing as T
 from typing import Union, Iterable
 import re
 
 import pyperclip
 
 from .common import (
-    pipe, curry, map, filter, concatv, strip,
-    is_seq, is_str, to_str,
+    is_dict, pipe, curry, map, filter, concatv, strip,
+    is_seq, is_str, to_str, merge,
 )
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     'clipboard_copy', 'clipboard_paste', 'difflines', 'escape_row', 'intlines',
     'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi', 'clip_text',
     'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
+    'columns_as_code', 'markdown_row',
 ]
 
 # ----------------------------------------------------------------------
@@ -145,6 +147,13 @@ def html_list(items):
         ''.join
     )
 
+# ----------------------------------------------------------------------
+#
+# Text formatting convenience functions
+#
+# ----------------------------------------------------------------------
+
+
 def noansi(text: str):
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
 
@@ -159,3 +168,27 @@ def clip_text(length, text, buf=' [...] ') -> str:
         return text[:l] + buf + text[-r:]
     return text
 
+@curry
+def columns_as_code(columns_as_code: T.Sequence[int|str], 
+                    row: T.Dict[str, T.Any] | T.Sequence[T.Any]):
+    columns = set(columns_as_code)
+    if is_dict(row):
+        return merge(
+            row,
+            {c: f'`{row[c]}`' if row[c] else '' for c in columns},
+        )
+    # assuming it's a sequence
+    return tuple(
+        (f'`{v}`' if v else '') if i in columns else v
+        for i, v in enumerate(row)
+    )
+
+@curry
+def markdown_row(row: T.Sequence[T.Any]):
+    return (
+        '| ' + pipe(
+            row,
+            map(str),
+            ' | '.join,
+        ) + ' |'
+    )

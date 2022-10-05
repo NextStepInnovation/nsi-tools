@@ -26,7 +26,7 @@ __all__ = [
     'is_path', 'newer', 'older', 'binpeek', 'read_text', 'read_bytes',
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'slurpbchunks',
     'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline', 
-    'stat', 'ctime', 'mtime', 'atime', 'file_size',
+    'stat', 'mstat', 'ctime', 'mtime', 'atime', 'file_size',
 ]
 
 # ----------------------------------------------------------------------
@@ -106,7 +106,7 @@ def ensure_paths(func, *, expanduser: bool=True, resolve: bool=False):
 
         args = list(args)
         for i in pos:
-            log.debug(args[i])
+            log.debug(f'ensure_paths: arg {i} {args[i]}')
             args[i] = Path(args[i])
             if expanduser:
                 args[i] = args[i].expanduser()
@@ -263,9 +263,16 @@ def binpeek(nbytes: int, path: Path):
     with path.open('rb') as rfp:
         return rfp.read(nbytes)
 
-@functools.lru_cache
 @ensure_paths
-def stat(path):
+def stat(path: Path):
+    return path.stat()
+
+@memoize
+@ensure_paths
+def mstat(path: Path):
+    '''
+    Memoized stat 
+    '''
     return path.stat()
 
 ctime = compose_left(

@@ -15,52 +15,6 @@ log = nsi.logging.new_log(__name__)
 class NexposeApiError(IOError):
     pass
 
-# def kw_tuple_to_dict(kw_seq: T.Sequence[T.Tuple[str, T.Any]]):
-#     '''
-#     Convert (key, value) tuple into dictionary while progressively merging
-#     values that are dictionaries. Purpose: allow for call-stack modification of
-#     kw arguments.
-    
-#     '''
-#     args = {}
-#     for (kw, value) in kw_seq:
-#         if type(value) is dict:
-#             args[kw] = merge(args.get(kw, {}), value)
-#         else:
-#             args[kw] = value
-#     return args
-
-# def resources_iter(method, *kw_tuple, **kw):
-#     kwargs = kw_tuple_to_dict(kw_tuple)
-
-#     params = kwargs.get('params', {})
-#     size = params.get('size', 'unknown')
-
-#     log.info(
-#         f'    page: 0 of-size: {size} for method: {method}'
-#     )
-#     response = method(**kwargs)
-#     json = fmaybe(response.json)().or_else({})
-
-#     if json.get('page'):
-#         for value in json.get('resources', []):
-#             yield value
-
-#         for page_i in range(1, json['page']['totalPages']):
-#             log.info(
-#                 f'    page: {page_i} of-size: {json["page"].get("size")}'
-#                 f' for method: {method}'
-#             )
-#             response = method(
-#                 **assoc(kwargs, 'params', merge(params, {'page': page_i}))
-#             )
-#             json = fmaybe(response.json)().or_else({})
-#             for value in json.get('resources', []):
-#                 yield value
-#     else:
-#         for value in json.get('resources', []):
-#             yield value
-
 Url = T.NewType('Url', str)
 Status = T.NewType('Status', str)
 
@@ -130,24 +84,37 @@ def log_error(error: Error):
                 'STATUS: 503 (Service Unavailable). Check server logs.'
             )
 
-def handle_error(error_prefix: str, response: Response):
-    error = get_json(response)
+def handle_error_response(error_prefix: str, response: Response):
+    error_json = get_json(response)
     log.error(
         f'{error_prefix}:'
     )
-    log.error(
-        f'  {error["message"]}'
-    )
-    if 'messages' in error:
-        for m in error['messages']:
+    log.error(f'  code: {response.status_code}')
+    log.error(f'  raw: {response.content[:200]}')
+    log.error(f'  message: {error_json.get("message")}')
+    if 'messages' in error_json:
+        for m in error_json['messages']:
             log.error(f'  - {m}')
-    return False, error
+    return False, error_json
 
 @curry
-def merge_params(params: dict, kwargs: dict):
-    return assoc(kwargs, 'params', merge(
-        kwargs.get('params', {}), params
-    ))
+def pprint_obj(printer, obj):
+    return pipe(
+        obj,
+        no_pyrsistent,
+        pprint.pformat,
+        splitlines,
+        map(printer),
+        tuple,
+    )
+
+@curry
+def merge_params(kwargs: dict, new_params: dict):
+    params = merge(
+        kwargs.get('params', {}),
+        new_params,
+    )
+    return assoc(kwargs, 'params', params)
 
 RequestMethod = T.Callable[[T.ParamSpecArgs, T.ParamSpecKwargs], Response]
 
@@ -156,39 +123,29 @@ def iter_resources(method: RequestMethod, size: int, **kwargs):
     '''
     Automatically iterate over paginated resources
     '''
-    kwargs = pipe(
-        kwargs,
-        merge_params({
-            'size': size,
-        }),
-    )
 
-    match method(**kwargs):
+    method_kw = merge_params(kwargs, {'size': size})
+
+    match method(**method_kw):
         case Response(status_code=200 | 201) as success:
             match get_json(success):
                 case {'resources': resources, 
-                      'page': {
-                          'number': page_no,
-                          'size': _page_size,
-                          'totalResources': _n_resources,
-                          'totalPages': _n_pages
-                        }, 
-                      'links': link_seq}:
+                      'links': link_seq} as r_json:
 
                     for resource in resources:
                         yield resource
 
                     if 'next' in links_dict(link_seq):
-                        yield from iter_resources(method, pipe(
-                            kwargs,
-                            merge_params({'page': page_no + 1})
+                        page_no = r_json['page']['number']
+                        yield from iter_resources(method, size, **merge_params(
+                            kwargs, {'page': page_no + 1},
                         ))
 
                 case {'id': _item_id} as json_with_id:
                     yield json_with_id
 
         case error:
-            return handle_error('Error getting resource', error)
+            return handle_error_response('Error getting resource', error)
 
 @curry
 def iter_resources_by(page_size: int, method: RequestMethod):
@@ -230,13 +187,6 @@ get_iterator = resource_iterator(method='get', resource_iterator=iter_by_50s)
 get_iterator500 = resource_iterator(method='get', resource_iterator=iter_by_500s)
 post_iterator = resource_iterator(method='post', resource_iterator=iter_by_50s)
 post_iterator500 = resource_iterator(method='post', resource_iterator=iter_by_500s)
-
-# @curry
-# def get_iterator(path: T.Sequence[T.Union[str, int]], api: Api, 
-#                  resource_getter: ResourceGetter = get_by_50s, **get_kwargs):
-#     return resource_getter(partial(api(*path).get, **get_kwargs))
-# get_iterator500 = get_iterator(resource_getter=get_by_500s)
-
 
 @curry
 def method_body(obj_type: str, method: str, key_map: dict, site: dict, 

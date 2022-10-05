@@ -1,3 +1,4 @@
+from pathlib import Path
 import typing as T
 
 from .. import logging
@@ -10,8 +11,10 @@ Ip = T.NewType('Ip', str)
 Mac = T.NewType('Mac', str)
 Port = T.NewType('Port', int)
 Protocol = T.NewType('Protocol', str)
-TimeStamp = T.NewType('TimeStamp', str)
-
+Timestamp = T.NewType('Timestamp', str)
+Int = T.NewType("Int", str)
+Float = T.NewType('Float', str)
+Html = T.NewType('Html', str)
 
 class Link(T.TypedDict):
     href: Url
@@ -239,20 +242,6 @@ class ReportStorage(T.TypedDict):
     path: str
 
 
-class ScanEngine(T.TypedDict):
-    address: str
-    contentVersion: str
-    enginePools: T.Sequence[int]
-    id: int
-    lastRefreshedDate: str
-    lastUpdatedDate: str
-    links: T.Sequence[Link]
-    name: str
-    port: Port
-    productVersion: str
-    sites: T.Sequence[int]
-
-
 class SearchCriteria(T.TypedDict):
     filters: T.Sequence[SwaggerSearchCriteriaFilter]
     match: str
@@ -318,23 +307,6 @@ class ReportFrequency(T.TypedDict):
     start: str
 
 
-class Scan(T.TypedDict):
-    assets: int
-    duration: str
-    endTime: str
-    engineId: int
-    engineName: str
-    id: int
-    links: T.Sequence[Link]
-    message: str
-    scanName: str
-    scanType: str
-    startTime: str
-    startedBy: str
-    status: str
-    vulnerabilities: Vulnerabilities
-
-
 
 class OperatingSystem(T.TypedDict):
     architecture: str
@@ -367,13 +339,16 @@ class ReportConfigFiltersResource(T.TypedDict):
     severity: str
     statuses: T.Sequence[str]
 
+TagName = T.NewType('TagName', str)
+TagNexposeId = T.NewType('TagNexposeId', int)
+TagId = T.Union[str, TagNexposeId]
 
 class Tag(T.TypedDict):
     color: str
     created: str
-    id: int
+    id: TagNexposeId
     links: T.Sequence[Link]
-    name: str
+    name: TagName
     riskModifier: float
     searchCriteria: SearchCriteria
     source: str
@@ -403,8 +378,11 @@ class Service(T.TypedDict):
 
 
 # -----------------------------------------------------------------------------
-# Site
+# Vulnerability (i.e. finding)
 # -----------------------------------------------------------------------------
+
+VulnerabilityNexposeId = T.NewType('VulnerabilityNexposeId', str)
+VulnerabilityId = VulnerabilityNexposeId
 
 class Vulnerability(T.TypedDict):
     added: str
@@ -414,7 +392,7 @@ class Vulnerability(T.TypedDict):
     denialOfService: bool
     description: ContentDescription
     exploits: int
-    id: str
+    id: VulnerabilityNexposeId
     links: T.Sequence[Link]
     malwareKits: int
     modified: str
@@ -424,9 +402,6 @@ class Vulnerability(T.TypedDict):
     severity: str
     severityScore: int
     title: str
-
-VulnerabilityNexposeId = T.NewType('VulnerabilityNexposeId', str)
-VulnerabilityId = VulnerabilityNexposeId
 
 
 # -----------------------------------------------------------------------------
@@ -450,7 +425,52 @@ class Site(T.TypedDict):
 
 SiteNexposeId = T.NewType('SiteNexposeId', int)
 SiteId = T.Union[str, SiteNexposeId]
+SiteList = T.Iterable[SiteId]
 SiteMap = T.Dict[SiteId, Site]
+
+
+# -----------------------------------------------------------------------------
+# Scan
+# -----------------------------------------------------------------------------
+
+
+class Scan(T.TypedDict):
+    assets: int
+    duration: str
+    endTime: str
+    engineId: int
+    engineName: str
+    id: int
+    links: T.Sequence[Link]
+    message: str
+    scanName: str
+    scanType: str
+    startTime: str
+    startedBy: str
+    status: str
+    vulnerabilities: Vulnerabilities
+
+ScanNextposeId = T.NewType('ScanNexposeId', int)
+ScanId = T.Union[T.Tuple[SiteId, str], ScanNextposeId]
+ScanMap = T.Dict[ScanId, Scan]
+ScanList = T.Iterable[ScanId]
+
+class ScanEngine(T.TypedDict):
+    address: str
+    contentVersion: str
+    enginePools: T.Sequence[int]
+    id: int
+    lastRefreshedDate: str
+    lastUpdatedDate: str
+    links: T.Sequence[Link]
+    name: str
+    port: Port
+    productVersion: str
+    sites: T.Sequence[int]
+
+ScanEngineNexposeId = T.NewType('ScanEngineNexposeId', int)
+ScanEngineId = T.Union[str, ScanEngineNexposeId]
+ScanEngineMap = T.Dict[ScanEngineId, ScanEngine]
 
 # -----------------------------------------------------------------------------
 # Asset
@@ -490,6 +510,27 @@ AssetList = T.Iterable[AssetId]
 AssetMap = T.Dict[AssetId, Asset]
 
 # -----------------------------------------------------------------------------
+# User
+# -----------------------------------------------------------------------------
+
+class User(T.TypedDict):
+    authentication: CreateAuthenticationSource
+    email: str
+    enabled: bool
+    id: int
+    links: T.Sequence[Link]
+    locale: LocalePreferences
+    locked: bool
+    login: str
+    name: str
+    password: str
+    passwordResetOnLogin: bool
+    role: UserCreateRole
+
+UserNexposeId = T.NewType('UserNexposeId', int)
+UserId = T.Union[UserNexposeId, str]
+
+# -----------------------------------------------------------------------------
 # Report
 # -----------------------------------------------------------------------------
 
@@ -519,25 +560,6 @@ class Report(T.TypedDict):
 
 ReportNexposeId = T.NewType('ReportNexposeId', int)
 ReportId = T.Union[ReportNexposeId, str]
-
-# -----------------------------------------------------------------------------
-# User
-# -----------------------------------------------------------------------------
-
-class User(T.TypedDict):
-    authentication: CreateAuthenticationSource
-    email: str
-    enabled: bool
-    id: int
-    links: T.Sequence[Link]
-    locale: LocalePreferences
-    locked: bool
-    login: str
-    name: str
-    password: str
-    passwordResetOnLogin: bool
-    role: UserCreateRole
-
-UserNexposeId = T.NewType('UserNexposeId', int)
-UserId = T.Union[UserNexposeId, str]
+ReportList = T.Iterable[ReportId]
+ReportMap = T.Dict[ReportId, Report]
 

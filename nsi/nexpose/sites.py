@@ -9,7 +9,7 @@ from ..toolz import *
 from .. import yaml
 from ..rest import Api, get_json
 from .api import (
-    get_iterator, NexposeApiError, method_body, handle_error,
+    get_iterator, NexposeApiError, method_body, handle_error_response,
 )
 from .types import (
     AssetList, Site, SiteMap, SiteId, SiteNexposeId,
@@ -21,11 +21,16 @@ get_sites = get_iterator(['sites'])
 
 @functools.cache
 def site_map(api: Api) -> SiteMap:
+    log.info('Loading Nexpose site map...')
     sites = tuple(get_sites(api)())
-    return pipe(merge(
-        {r['name']: r for r in sites},
-        {r['id']: r for r in sites},
-    ), do(lambda d: log.debug(tuple(d.keys()))))
+    log.info(f'  .. {len(sites)} sites loaded.')
+    return pipe(
+        merge(
+            {r['name']: r for r in sites},
+            {r['id']: r for r in sites},
+        ), 
+        do(lambda d: log.debug(tuple(d.keys()))),
+    )
 
 def get_site(api: Api, site_id: SiteId) -> Site:
     return site_map(api)[site_id]
@@ -98,7 +103,7 @@ def set_site(api: Api, site_id: SiteId, site_body: dict):
             site_map.cache_clear()
             return True, get_site(api, site_id)
         case error:
-            return handle_error('Error setting Site data', error)
+            return handle_error_response('Error setting Site data', error)
 
 def get_metadata(api: Api, site_id: SiteId):
     return pipe(
@@ -149,7 +154,7 @@ def new_site(api: Api, name: str, included: AssetList = (), excluded: AssetList 
             site_map.cache_clear()
             return True, get_site(api, get_json(response)['id'])
         case error_response:
-            return handle_error('Error in Site creation', error_response)
+            return handle_error_response('Error in Site creation', error_response)
 
 def mark_for_deletion(api: Api, site_id: SiteId):
     site = get_site(api, site_id)
@@ -194,7 +199,7 @@ def delete_site(api: Api, site_id: int):
     #     case Response(status_code=200):
     #         return True, {}
     #     case error_response:
-    #         return handle_error('Error in Site deletion', error_response)
+    #         return handle_error_response('Error in Site deletion', error_response)
 
 # def site_assets(api: Api, site_id: SiteId):
 #     site = get_

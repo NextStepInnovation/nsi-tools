@@ -119,6 +119,9 @@ def load_config(path: Path) -> ConfigSuccess:
         )
         return False, {}
 
+    log.info(
+        f'Loading Nexpose config from path: {path}'
+    )
     return pipe(
         path,
         yaml.read_yaml,

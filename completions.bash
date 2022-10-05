@@ -24,7 +24,7 @@ _diffips_68e8957dba042734_complete()
 
     # completing for an option
     if [[ ${cur} == --* ]] ; then
-        opts="--help"
+        opts="--help --loglevel"
 
         case "$com" in
 
@@ -946,7 +946,11 @@ _nsi_nexpose_68e8957dba042734_complete()
 
         case "$com" in
 
-            (check-connection)
+            (check-config)
+            opts="--config-path --config-path --help"
+            ;;
+
+            (download-report)
             opts="--config-path --help"
             ;;
 
@@ -964,7 +968,7 @@ _nsi_nexpose_68e8957dba042734_complete()
 
     # completing for a command
     if [[ $cur == $com ]]; then
-        coms="check-connection init-config"
+        coms="check-config download-report init-config"
 
         COMPREPLY=($(compgen -W "${coms}" -- ${cur}))
         __ltrim_colon_completions "$cur"
