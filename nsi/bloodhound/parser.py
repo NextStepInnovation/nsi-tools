@@ -45,6 +45,8 @@ def get_id(d):
             return id
         case {'ObjectIdentifier': id}:
             return id
+        case {'PrincipalSID': id}:
+            return id
     d_str = pprint.pformat(d)[:1000]
     log.error(d_str)
     raise KeyError(
@@ -119,76 +121,6 @@ def parse_directory(path: Union[str, Path]):
         bloodhound_data_from_paths,
     )
     
-# @curry
-# def lookup_member(object, member: dict):
-#     return object.parent.by_id.get(member.get('MemberId'))
-
-# @curry
-# def get_members_from_key(key, object):
-#     return pipe(
-#         object.get(key, []),
-#         map(lookup_member(object)),
-#         filter(None),
-#         tuple,
-#     )
-
-# get_group_members = get_members_from_key('Members')
-
-# def get_displayname(user: dict):
-#     return user['Properties'].get('displayname', '') or ''
-
-# def get_groups(data: dict, group: dict):
-#     for g in data['groups']:
-#         for member in get_group_members(g):
-#             if get_id(member) == get_id(group):
-#                 yield group
-
-# get_localadmins = get_members_from_key('LocalAdmins')
-
-# def get_sessions(computer: T.Dict):
-#     pass
-
-# def parse_root_path(path: Union[str, Path]):
-#     '''Parse the root data path, i.e. with timestamped subdirectories,
-#     return dictionary with Datetime objects as keys and list of JSON
-#     paths as values
-
-#     '''
-#     return pipe(
-#         Path(path).expanduser().glob('*'),
-#         filter(lambda p: p.is_dir() and maybe_dt(p.name)),
-#         mapcat(lambda p: product(
-#             (to_dt(p.name),),
-#             p.glob('*.json')
-#         )),
-#         bakedict(lambda t: t[0], lambda t: t[1]),
-#         valmap(bloodhound_data_from_paths),
-#     )
-
-# def ingest_time_dependent_data(data: Dict[datetime, Iterable[Path]],
-#                                ingestor: Callable[[datetime, Path],
-#                                                   Tuple[bool, Tuple[str]]], *,
-#                                short_circuit=True):
-#     error_prefix = f'Error ingesting for {ingestor}\n'
-
-#     def log_errors(errors):
-#         return pipe(
-#             errors,
-#             map(lambda e: f'- {e}'),
-#             '\n'.join,
-#             lambda estr: error_prefix + estr,
-#             log.error,
-#         )
-    
-#     for dt, paths in data.items():
-#         for p in paths:
-#             success, errors = ingestor(dt, p)
-#             if not success:
-#                 log_errors(errors)
-#                 if short_circuit:
-#                     return False
-#     return True
-
 def get_names(objects):
     return pipe(
         objects,
@@ -298,41 +230,11 @@ def user_groups(path: Path):
         valmap(map_t(second)),
     )
 
-# @curry
-# @ensure_paths
-# def group_members(path: Path, group_name: str, *, recurse: bool = False):
-#     data = parse_directory(path)
-
-#     return pipe(
-#         data['by_name'][group_name],
-#         get_members(path, recurse=recurse),
-#         filter(None),
-#         unique(key=get_id),
-#         tuple,
-
-#     )
-
-# @curry
-# @ensure_paths
-# def group_search(path: Path, group_re: str, *, recurse=False):
-#     data = parse_directory(path)
-#     groups = pipe(
-#         data['groups'],
-#         map(get_name),
-#         igrept(group_re),
-#     )
-#     return pipe(
-#         groups,
-#         map(lambda gname: (
-#             gname, 
-#             group_members(path, gname, recurse=recurse),
-#         )),
-#         dict,
-#     )
-
 group_search_names = compose_left(
     group_search,
     valmap(map_t(get_name)),
 )
 
 
+def group_graph():
+    pass
