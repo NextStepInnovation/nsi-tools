@@ -147,7 +147,13 @@ def check_config(config_path):
     generated, then this will pull the old content.
     '''
 )
-def download_report(sites, config_path, name, output_path, force):
+@click.option(
+    '--keep', is_flag=True, help='''
+    Keep the report on the Nexpose console. Otherwise, it will be deleted after
+    being written to the filesystem.
+    '''
+)
+def download_report(sites, config_path, name, output_path, force, keep):
     log.info('Initializing report download')
 
     config = get_config(config_path)
@@ -172,12 +178,13 @@ def download_report(sites, config_path, name, output_path, force):
         raise click.Abort
 
     log.info(f'Downloading {len(sites)} report(s) for the following sites:')
-    for name in sites:
-        log.info(f'- {name}')
+    for site in sites:
+        log.info(f'- {site}')
 
     if name is None:
         name = pipe(
             sites,
+            sorted,
             '-'.join,
         )
     if output_path is None:
@@ -194,4 +201,8 @@ def download_report(sites, config_path, name, output_path, force):
 
     if success:
         output_path.write_bytes(content)
+
+    if not keep:
+        log.info(f'Destroying report: {name}')
+        nexpose.reports.destroy_report(api, name)
     
