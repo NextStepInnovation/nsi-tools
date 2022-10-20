@@ -246,11 +246,13 @@ def nmap_services(paths, no_ports, loglevel, exclude_list, include_list):
         exclude_list,
         _.get_ips_from_file,
     ) if exclude_list else []
+    log.info(f'Excluding IPs: {exclude_list}') if exclude_list else None
 
     include_list = pipe(
         include_list,
         _.get_ips_from_file,
     ) if include_list else []
+    log.info(f'Including IPs: {include_list}') if include_list else None
 
     @_.ensure_paths
     def get_services(path: Path):
@@ -279,8 +281,8 @@ def nmap_services(paths, no_ports, loglevel, exclude_list, include_list):
         parallel.thread_map(get_services),
         _.concat,
         _.sort_by(lambda r: ipaddress.ip_address(r[0])),
-        _.filter(lambda r: r[0] not in exclude_list),
-        _.filter(lambda r: include_list and (r[0] in include_list)),
+        _.filter(lambda r: r[0] not in exclude_list) if exclude_list else _.noop,
+        _.filter(lambda r: r[0] in include_list) if include_list else _.noop,
         _.map('\t'.join),
         '\n'.join,
         print
