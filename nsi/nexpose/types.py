@@ -8,6 +8,7 @@ log = logging.new_log(__name__)
 
 Url = T.NewType('Url', str)
 Ip = T.NewType('Ip', str)
+IpList = T.Sequence[Ip]
 Mac = T.NewType('Mac', str)
 Port = T.NewType('Port', int)
 Protocol = T.NewType('Protocol', str)
@@ -340,6 +341,7 @@ class ReportConfigFiltersResource(T.TypedDict):
     statuses: T.Sequence[str]
 
 TagName = T.NewType('TagName', str)
+TagList = T.Sequence[TagName]
 TagNexposeId = T.NewType('TagNexposeId', int)
 TagId = T.Union[str, TagNexposeId]
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ..types import (
     Float, Int, Html, Timestamp, Url, Ip, 
-    TagName, TagId, 
+    TagName, TagId, TagList, IpList,
     VulnerabilityNexposeId,
 )
 

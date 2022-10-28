@@ -6,7 +6,6 @@ from pathlib import Path
 import typing as T
 
 import click
-import pyperclip
 
 from .. import logging
 from .. import nexpose

@@ -5,7 +5,11 @@ from pathlib import Path
 
 import networkx as nx
 
-from ..toolz import *
+from ..toolz import (
+    pipe, filter, map, merge, groupdict, groupby, get, mapcat, cdissoc, curry,
+    cmerge, concatv, startswith, split, second, slurp, json_loads, vmapcat, 
+    vfilter, sort_by, vcall,
+)
 from .. import markdown
 from .. import logging
 

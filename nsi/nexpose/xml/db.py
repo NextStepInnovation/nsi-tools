@@ -1,4 +1,5 @@
 from ast import For
+import pprint
 from pathlib import Path
 from turtle import right
 import typing as T
@@ -14,11 +15,14 @@ from sqlalchemy.orm import (
 from ... import logging
 from ...toolz import (
     pipe, vmap, merge, ensure_paths, get, filter, map, vfilter,
-    take, mapcat, do, newer,
+    take, mapcat, do, newer, first, maybe_first, groupby, deref, valmap,
 )
 
 from . import parser
 from . import types
+from .types import (
+    TagName, TagList, Ip, IpList,
+)
 
 __all__ = [
     'get_engine', 'get_session', 
@@ -249,6 +253,12 @@ class Test(Base, NexposeData):
         "polymorphic_on": test_type,
     }
 
+    @classmethod
+    def tag_filter(cls, include_tags: TagList, exclude_tags: TagList):
+        return cls.finding.has(Finding.tag_filter(include_tags, exclude_tags))
+
+
+
 class ServiceTest(Test):
     service_id = Column(Integer, ForeignKey('service.table_id'))
     service = relationship('Service', back_populates='tests')
@@ -257,6 +267,20 @@ class ServiceTest(Test):
         "polymorphic_identity": 'service',
     }
 
+    @classmethod
+    def node_filter(cls, addresses: IpList):
+        return cls.service.has(
+            Service.endpoint.has(
+                Endpoint.node.has(
+                    Node.address.in_(addresses)
+                )
+            )
+        )
+
+    @property
+    def node(self):
+        return self.service.endpoint.node
+
 class NodeTest(Test):
     node_id = Column(Integer, ForeignKey('node.table_id'))
     node = relationship('Node', back_populates='tests')
@@ -264,6 +288,10 @@ class NodeTest(Test):
     __mapper_args__ = {
         "polymorphic_identity": 'node',
     }
+
+    @classmethod
+    def node_filter(cls, addresses: IpList):
+        return cls.node.has(Node.address.in_(addresses))
 
 
 '''
@@ -522,21 +550,8 @@ class Node(Base, NexposeData):
     report_id = Column(Integer, ForeignKey('nexpose_report.table_id'))
     report = relationship('NexposeReport', back_populates='nodes')
 
-    # findings = relationship(
-    #     'Finding',
-    #     secondary=Table(
-    #         'node_finding', Base.metadata,
-    #         Column(
-    #             'node_id', String, ForeignKey('node.id'), 
-    #             primary_key=True,
-    #         ),
-    #         Column(
-    #             'finding_id', String, ForeignKey('finding.id'), 
-    #             primary_key=True,
-    #         ),
-    #     ),
-    #     backref='nodes',
-    # )
+    def tests_from_data(data: types.Node):
+        pass
 
     @property
     def all_tests(self):
@@ -563,7 +578,7 @@ class Node(Base, NexposeData):
     _ingested = 0
     def ingest(self, data: types.Node):
         if self._ingested % 10 == 0 and self._ingested:
-            log.info(f'Node: {self._ingested} {self.address}')
+            log.debug(f'Node: {self._ingested} {self.address}')
         self.__class__._ingested += 1
 
         pipe(
@@ -598,8 +613,6 @@ class Node(Base, NexposeData):
             map(NodeTest.from_dict),
             self.tests.extend,
         )
-
-        # for test in self.all_tests:
 
     def output_dict(self, data: dict):
         return {
@@ -787,6 +800,23 @@ class Finding(Base, NexposeData):
     solution = Column(String)
     title = Column(String)
     
+    nodes = relationship(
+        'Node',
+        secondary=Table(
+            'node_finding', Base.metadata,
+            Column(
+                'node_id', String, ForeignKey('node.table_id'), 
+                primary_key=True,
+            ),
+            Column(
+                'finding_id', String, ForeignKey('finding.id'), 
+                primary_key=True,
+            ),
+        ),
+        backref='findings',
+    )
+
+
     # exploits = relationship('Exploit', back_populates='findings')
     # malware = relationship('Malware', back_populates='findings')
     # tags = relationship('Tag', back_populates='findings')
@@ -808,7 +838,7 @@ class Finding(Base, NexposeData):
     _ingested = 0
     def ingest(self, data: types.Finding):
         if self._ingested % 100 == 0 and self._ingested:
-            log.info(f'Finding: {self._ingested} {self.id}')
+            log.debug(f'Finding: {self._ingested} {self.id}')
         self.__class__._ingested += 1
 
         pipe(
@@ -842,24 +872,22 @@ class Finding(Base, NexposeData):
 
     @classmethod
     def node_filter(cls, addresses: T.Sequence[str]):
-        return cls.tests.any(
-            NodeTest.node.has(Node.address.in_(addresses)) |
-            ServiceTest.service.has(Endpoint.node.has(Node.address.in_(addresses)))
-        )
+        return cls.nodes.any(Node.address.in_(addresses))
 
     @classmethod
     def tag_filter(cls, include_tags, exclude_tags):
-        include_filter = Finding.tags.any(Tag.name.in_(include_tags))
-        exclude_filter = ~Finding.tags.any(Tag.name.in_(exclude_tags))
         match (include_tags, exclude_tags):
             case (None, None):
-                return None
+                return True
             case (None, exclude):
-                return exclude_filter
+                return ~Finding.tags.any(Tag.name.in_(exclude_tags))
             case (include, None):
-                return None
+                return True
             case (include, exclude):
-                return include_filter | exclude_filter
+                return (
+                    Finding.tags.any(Tag.name.in_(include_tags)) | 
+                    ~Finding.tags.any(Tag.name.in_(exclude_tags))
+                )
 
 
 '''
@@ -927,17 +955,59 @@ class NexposeReport(Base, NexposeData):
     nodes = relationship('Node', back_populates='report')
     findings = relationship('Finding', back_populates='report')
     scans = relationship('Scan', back_populates='report')
+    
 
     def ingest(self, data: types.XmlReport):
+        log.info(
+            'Starting ingestion:'
+        )
+        log.info(
+            f'  ... {len(data["findings"])} findings'
+        )
         pipe(
             data['findings'],
             map(Finding.from_dict),
             self.findings.extend,
         )
+
+        log.info(
+            f'  ... {len(data["nodes"])} nodes'
+        )
         pipe(
             data['nodes'],
             map(Node.from_dict),
             self.nodes.extend,
+        )
+
+        log.info(
+            f'  ... building finding lookup-table'
+        )
+        finding_lut = pipe(
+            self.findings,
+            groupby(deref('id')),
+            valmap(first),
+        )
+
+        log.info(
+            f'  ... building node-finding association table'
+        )
+        for dnode, snode in zip(data['nodes'], self.nodes):
+            findings = []
+            for test in dnode.get('tests', []):
+                findings.append(test['id'])
+            for endpoint in dnode.get('endpoints', []):
+                for service in endpoint.get('services', []):
+                    for test in service.get('tests', []):
+                        findings.append(test['id'])
+            pipe(
+                findings,
+                set,
+                map(lambda i: finding_lut[i]),
+                snode.findings.extend,
+            )
+
+        log.info(
+            f'  ... {len(data["scans"])} scans'
         )
         pipe(
             data['scans'],
