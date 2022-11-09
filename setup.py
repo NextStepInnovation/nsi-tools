@@ -64,6 +64,7 @@ setup(
         'requests',
         'requests[socks]',
         'ruamel.yaml',
+        'sqlalchemy',
         'toolz',
         'webdav',
         'xmljson',

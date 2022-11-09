@@ -179,9 +179,9 @@ def load_environment_vars(prefix: str, config_obj: T.Any,
                 map(upper),
                 '_'.join,
             )
-            log.debug(
-                f'  checking environment variable: {env_keys} --> {env_var}'
-            )
+            # log.debug(
+            #     f'  checking environment variable: {env_keys} --> {env_var}'
+            # )
             if env_var in os.environ:
                 env_value = os.environ[env_var]
                 try:

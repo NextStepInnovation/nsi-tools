@@ -1,11 +1,13 @@
 import typing as T
 import enum
 
+from requests import Response
+
 from .. import logging
 from ..toolz import *
 from ..rest import Api, get_json
 from .api import (
-    get_iterator, get_iterator500, NexposeApiError, 
+    get_iterator, get_iterator500, NexposeApiError, handle_error_response,
 )
 from .types import (
     Asset, AssetId, AssetMap, SearchCriteria, SwaggerSearchCriteriaFilter,
@@ -17,7 +19,7 @@ from .search import (
 
 log = logging.new_log(__name__)
 
-get_assets = get_iterator500(['assets'])
+#get_assets = get_iterator500(['assets'])
 
 # def asset_map(api: Api) -> AssetMap:
 #     assets = get_assets(api)()
@@ -34,4 +36,9 @@ def search_criteria() -> SearchCriteria:
     pass
 
 def get_asset(api: Api, asset_id: AssetId) -> Asset:
-    pass
+    match api('assets', asset_id).get():
+        case Response(status_code=200) as success:
+            return get_json(success)
+        case error:
+            return handle_error_response('Error getting Asset', error)
+

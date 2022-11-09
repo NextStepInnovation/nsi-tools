@@ -1,214 +1,283 @@
+import functools
 import time
 import typing as T
+
+from requests import Response
 
 from .. import logging
 from ..toolz import *
 from ..rest import Api, get_json
 
 from .types import (
-    AssetList,
+    AssetList, AssetId, 
+    ScanId, ScanList, 
+    SiteId, SiteList,
+    Report, ReportNexposeId, ReportId, ReportMap, ReportList,
 )
-from .api import (
-    get_iterator, NexposeApiError, 
-)
-from .sites import (
-    SiteId, get_site,
-)
+from .api import get_iterator, NexposeApiError, handle_error_response
+from .sites import get_site, site_map
 
 log = logging.new_log(__name__)
 
 get_reports = get_iterator(['reports'])
-def report_map(api: Api):
-    return {
-        r['name']: r for r in get_reports(api)()
-    }
 
-get_templates = get_iterator(['report_templates'])
-@memoize
-def template_map(api: Api):
-    return {
-        t['name']: t for t in get_templates(api)()
-    }
+@functools.cache
+def report_map(api: Api) -> ReportMap:
+    reports = tuple(get_reports(api)())
+    return merge(
+        {r['name']: r for r in reports},
+        {r['id']: r for r in reports},
+    )
 
-@curry
-def template_id(api: Api, name: str):
-    return template_map(api)[name]['id']
+def get_report(api: Api, report_id: ReportId):
+    return report_map(api).get(report_id)
 
-def wait_for_report(api: Api, report_id: int, instance_id: int,
+def get_report_histories(api, report_id: ReportId):
+    log.info(f'Getting Report history for {report_id}')
+    report = get_report(api, report_id)
+    if not report:
+        log.error(f'  ... Report {report_id} does not exist')
+        return []
+    return get_iterator(['reports', report['id'], 'history'])(api)()
+
+def wait_for_report(api: Api, report_id: ReportNexposeId, instance_id: int,
                     wait_time: int = 1, run_index: int = 0, 
                     max_runs: int = 7):
-    log.info(f'Checking for report: {report_id}')
+    log.info(f'Checking to see if report ({report_id}) is ready...')
 
-    response = api('reports', report_id, 'history', instance_id).get()
-    json = get_json(response)
-    status = json.get('status')
-    if status:
-        if status == 'failed':
-            log.error('Report failed')
-            return False
-        elif status == 'aborted':
-            log.error('Report aborted')
-            return False
-        elif status == 'unknown':
-            log.error('Report terminated for unknown reason')
-            return False
-        elif status == 'complete':
-            return True
-        elif status == 'running':
-            if run_index > max_runs:
-                log.error(
-                    f'Tried {max_runs} times... giving up. This is either'
-                    f' a huge report (try again later), or something\'s wrong.'
-                )
-                return False
-            log.info(f'  not done... waiting {wait_time} seconds')
-            time.sleep(wait_time)
-            return wait_for_report(
-                api, report_id, instance_id, wait_time * 2, run_index + 1
-            )
-        else:
-            log.error(f'Unhandled status returned: {status}')
-            return False
-    else:
-        raise NexposeApiError(
-            f'Got an unhandled response (code: {response.status_code})\n'
-            '\n'
-            f'{response.content.decode()}'
-        )
-
-'''
-      name: '{{ reports.nexpose_xml.path }}'
-      format: xml-export-v2
-      scope:
-        sites:
-          - '{{ site }}'
-      filters:
-        severity: all
-        statuses:
-          - vulnerable-version
-          - vulnerable
-          - potentially-vulnerable
-'''
-
-def new_report_body(api: Api, site_ids: T.Iterator[SiteId], 
-                    asset_ids: AssetList):
-    sites = [
-        get_site(api, site_id) for site_id in site_ids
-    ]
-    assets = [
-        get_asset(api, asset_id) for asset_id in asset_ids
-    ]
-
-    scope = {
-        'sites': [
-            s['id'] for s in sites
-        ]
-    }
-    def in_all(ids):
-        return pipe((set(ids) & all_asset_ids()), sorted)
-
-    return pipe(
-        options,
-        only_if_key('template', update_key(
-            'template',
-            lambda body: template_id(body['template'])
-        )),
-
-        only_if_key('scope', update_key(
-            'scope',
-            lambda body: pipe(
-                body['scope'],
-                only_if_key('assets', update_key(
-                    'assets',
-                    lambda scope: pipe(
-                        asset_ids(api, scope['assets']),
-                        in_all,
+    match api('reports', report_id, 'history', instance_id).get():
+        case Response(status_code = 200) as success:
+            match get_json(success):
+                case {'status': 'failed'} as failed:
+                    log.error('  ... content generation failed outright')
+                    log_obj(log.error, failed)
+                case {'status': 'unknown'} as unknown:
+                    log.error('  ... content generation failed for unknown reason')
+                    log_obj(log.error, unknown)
+                case {'status': 'complete'}:
+                    return True
+                case {'status': 'running'} as running:
+                    if run_index > max_runs:
+                        log.error(
+                            f'Tried {max_runs} times and giving up. This is'
+                            ' either a very large report (so try again later),'
+                            ' or something is very wrong.'
+                        )
+                        log_obj(log.error, running)
+                    log.info(f'  ... not done. Waiting {wait_time} seconds')
+                    time.sleep(wait_time)
+                    return wait_for_report(
+                        api, report_id, instance_id, wait_time * 2, 
+                        run_index + 1,
                     )
-                )),
-                only_if_key('sites', update_key(
-                    'sites',
-                    lambda scope: sites_ids(api, scope['sites'])
-                )),
-                only_if_key('groups', switch_keys(
-                    'groups', 'assetGroups', lambda d: d['groups']
-                )),
+                case unhandled:
+                    log.error('  ... given unhandled status for report generation')
+                    log_obj(log.error, unhandled)
+    return False
+
+def new_report_body(api: Api, name: str, site_ids: SiteList,
+                    asset_ids: AssetList, scan_ids: ScanList):
+    return {
+        'name': name,
+        'format': 'xml-export-v2',
+        'scope': merge(
+            {'sites': [
+                s['id'] for s in [site_map(api).get(i) for i in site_ids]
+            ]} if site_ids else {},
+        ),
+        'filters': {
+            'severity': 'all',
+            'statuses': [
+                'vulnerable-version',
+                'vulnerable',
+                'potentially-vulnerable',
+            ],
+        },
+    }
+
+def new_report(api: Api, name: str, site_ids: SiteList, 
+               asset_ids: AssetList = None, 
+               scan_ids: ScanList = None) -> T.Tuple[bool, Report]:
+    match api('reports').post(json=new_report_body(
+            api, name, site_ids, asset_ids=asset_ids, scan_ids=scan_ids,
+        )):
+        case Response(status_code = 200 | 201) as success:
+            report_map.cache_clear()
+            return True, get_report(api, get_json(success)['id'])
+        case error_response:
+            return handle_error_response('Error in Report creation', error_response)
+
+def generate_report(api: Api, report_id: ReportNexposeId) -> T.Tuple[bool, int]:
+    match api('reports', report_id, 'generate').post():
+        case Response(status_code = 200 | 201) as success:
+            return True, get_json(success)['id']
+        case error_response:
+            return handle_error_response(
+                'Error in Report content generation', error_response
             )
-        )),
 
-        only_if_key('filters', update_key(
-            'filters',
-            lambda body: merge(
-                {'severity': 'all',
-                 'statuses': ['vulnerable-version',
-                              'vulnerable',
-                              'potentially-vulnerable']},
-                body['filters']
+def output_report(api: Api, report_id: ReportNexposeId, instance_id: int):
+    match api('reports', report_id, 'history', instance_id, 'output').get():
+        case Response(status_code = 200 | 201) as success:
+            return True, success.content
+        case error_response:
+            return handle_error_response(
+                'Error in downloading Report content', error_response
             )
-        )),
-    )
 
-def new_report(api: Api, body: dict):
-    response = api('reports').post(json=body)
-    report_id = get_json(response).get('id')
-    if report_id:
-        return report_id
-    raise NexposeApiError(
-        'Could not create report template:\n'
-        '\n'
-        f'{response.content.decode()}'
-    )
+def delete_report(api: Api, report_id: ReportId) -> T.Tuple[bool, T.Optional[dict]]:
+    log.info(f'Deleting Report {report_id}')
+    report = get_report(api, report_id)
+    if not report:
+        log.error(f'  ... no Report {report_id} exists.')
+        return True
+    match api('reports', report_id).delete():
+        case Response(status_code = 200) as success:
+            report_map.cache_clear()
+            return True, None
+        case error_response:
+            return handle_error_response(
+                'Error in deleting Report', error_response
+            )
 
-def generate_report(api: Api, report_id: int):
-    response = api('reports', report_id, 'generate').post()
-    instance_id = get_json(response).get('id')
-    if instance_id:
-        return instance_id
-    raise NexposeApiError(
-        'Could not create report content:\n'
-        '\n'
-        f'{response.content.decode()}'
-    )
+def delete_report_history(api: Api, report_id: ReportNexposeId, 
+                          instance_id: int) -> T.Tuple[bool, T.Optional[dict]]:
+    log.info(f'Deleting report history ({report_id}, {instance_id})')
+    match api('reports', report_id, 'history', instance_id).delete():
+        case Response(status_code = 200) as success:
+            return True, None
+        case error_response:
+            return handle_error_response(
+                'Error in deleting Report content history', error_response
+            )
 
-def lookup_report(api: Api, name: str):
-    report_id = report_map(api).get(name, {}).get('id')
-    instance_id = maybe_pipe(
-        api('reports', report_id, 'history').get(),
-        get_json,
-        get('resources', default={}),
-        filter(lambda r: r.get('status') in {'complete', 'running'}),
-        first,
-        lambda instance: instance['id']
-    ) or None
-    return report_id, instance_id
-
-def get_report_content(api: Api, report_id: int, instance_id: int):
-    response = api(
-        'reports', report_id, 'history', instance_id, 'output'
-    ).get()
-    return response.status_code == 200, response.content
-
-def delete_report_content(api: Api, report_id: int, instance_id: int):
-    response = api(
-        'reports', report_id, 'history', instance_id
-    ).delete()
-    return response.status_code == 200, response
-
-def delete_report(api: Api, report_id: int):
-    response = api('reports', report_id).delete()
-    return response.status_code == 200, response
-
-def destroy_report(api: Api, report_id: int, instance_id: int):
-    success, response = delete_report_content(api, report_id, instance_id)
-    if not success:
-        log.error('Could not delete report content:\n'
-                  f'{response.content.decode()}')
-        return False
-
-    success, response = delete_report(api, report_id)
-    if not success:
-        log.error('Could not delete report:\n'
-                  f'\n{response.content.decode()}')
-        return False
-
+def delete_all_report_histories(api: Api, report_id: ReportId) -> T.Tuple[bool, T.Optional[dict]]:
+    log.info(f'Deleting all Report content history for {report_id}')
+    report = get_report(api, report_id)
+    if not report:
+        log.error(f'  ... no Report {report_id} exists.')
+        return True
+    instance_ids = pipe(get_report_histories(api, report_id), map(get('id')), tuple)
+    if not instance_ids:
+        log.error(f'  ... no content generated for Report {report_id}')
+    for instance_id in instance_ids:
+        success, output = delete_report_history(api, report['id'], instance_id)
+        if not success:
+            log.error(f'  ... could not delete ({report_id}, {instance_id})')
+            log_obj(log.error, output)
     return True
+    
+def destroy_report(api: Api, report_id: ReportId):
+    '''
+    Idempotent report destruction. Will delete all generated Report content and
+    the Report object itself.
+    '''
+    log.info(f'Destroying Report {report_id}')
+    report = get_report(api, report_id)
+    if not report:
+        log.error(f'  ... no Report {report_id} exists.')
+        return True
+
+    delete_all_report_histories(api, report_id)
+    return delete_report(api, report['id'])
+
+def download_report(api: Api, name: str, site_ids: SiteList = None,
+                    asset_ids: AssetList = None, scan_ids: ScanList = None,
+                    force_regen: bool = False) -> T.Tuple[bool, T.Optional[T.Union[bytes, dict]]]:
+    log.info(f'Downloading report {name}')
+    report = get_report(api, name)
+    if not report:
+        log.info('Report does not exist, so creating')
+        success, report = new_report(
+            api, name, 
+            site_ids=site_ids, asset_ids=asset_ids, scan_ids=scan_ids,
+        )
+        if not success:
+            log.error('  ... could not create report')
+            return False, None
+    elif force_regen:
+        log.info(f'FORCE_REGEN: Report {name} exists, so destroying')
+        success = destroy_report(api, name)
+        if not success:
+            log.error('FORCE_REGEN: Could not delete existing report')
+            return False, None
+        return download_report(api, name, site_ids, asset_ids, scan_ids)
+
+    log.info('Generating report content')
+    report_id = report['id']
+    success, instance_id = generate_report(api, report_id)
+    if not success:
+        log.error('  ... could not generate report content')
+        return False, None
+
+    if not wait_for_report(api, report_id, instance_id):
+        return False, None
+
+    return output_report(api, report_id, instance_id)
+            
+
+# def new_report(api: Api, body: dict):
+#     response = api('reports').post(json=body)
+#     report_id = get_json(response).get('id')
+#     if report_id:
+#         return report_id
+#     raise NexposeApiError(
+#         'Could not create report template:\n'
+#         '\n'
+#         f'{response.content.decode()}'
+#     )
+
+# def generate_report(api: Api, report_id: int):
+#     response = api('reports', report_id, 'generate').post()
+#     instance_id = get_json(response).get('id')
+#     if instance_id:
+#         return instance_id
+#     raise NexposeApiError(
+#         'Could not create report content:\n'
+#         '\n'
+#         f'{response.content.decode()}'
+#     )
+
+# def lookup_report(api: Api, name: str):
+#     report_id = report_map(api).get(name, {}).get('id')
+#     instance_id = maybe_pipe(
+#         api('reports', report_id, 'history').get(),
+#         get_json,
+#         get('resources', default={}),
+#         filter(lambda r: r.get('status') in {'complete', 'running'}),
+#         first,
+#         lambda instance: instance['id']
+#     ) or None
+#     return report_id, instance_id
+
+# def get_report_content(api: Api, report_id: int, instance_id: int):
+#     response = api(
+#         'reports', report_id, 'history', instance_id, 'output'
+#     ).get()
+#     return response.status_code == 200, response.content
+
+# def delete_report_content(api: Api, report_id: int, instance_id: int):
+#     response = api(
+#         'reports', report_id, 'history', instance_id
+#     ).delete()
+#     return response.status_code == 200, response
+
+# def delete_report(api: Api, report_id: int):
+#     response = api('reports', report_id).delete()
+#     return response.status_code == 200, response
+
+# def destroy_report(api: Api, report_id: int, instance_id: int):
+#     success, response = delete_report_content(api, report_id, instance_id)
+#     if not success:
+#         log.error('Could not delete report content:\n'
+#                   f'{response.content.decode()}')
+#         return False
+
+#     success, response = delete_report(api, report_id)
+#     if not success:
+#         log.error('Could not delete report:\n'
+#                   f'\n{response.content.decode()}')
+#         return False
+
+#     return True
 

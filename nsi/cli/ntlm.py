@@ -28,20 +28,35 @@ log = new_log(__name__)
 )
 @click.option(
     '-a', '--admins', type=click.Path(exists=True),
-    help=('Path of file with domain/local administrator names'),
+    help='''
+    Path of file with administrator names. This could be accounts with full
+    domain administrator access or just low level. Can be used with
+    --domain-admins to differentiate between the two.
+    ''',
+)
+@click.option(
+    '-d', '--domain-admins', type=click.Path(exists=True),
+    help=('Path of file with domain administrator names'),
+)
+@click.option(
+    '-H', '--include-hashes', is_flag=True,
+    help='''
+    Include the NT hash in the output
+    '''
 )
 @click.option(
     '-T', '--table', is_flag=True,
     help=('Output in Markdown table form'),
 )
 @click.option(
-    '-C', '--to-clipboard', is_flag=True,
+    '-c', '--to-clipboard', is_flag=True,
     help=('Send output to clipboard'),
 )
 @click.option(
     '--loglevel', default='info',
 )
-def resolve(hashes, potfile, admins, table, to_clipboard, loglevel):
+def resolve(hashes, potfile, admins, domain_admins, include_hashes, table, 
+            to_clipboard, loglevel):
     logging.setup_logging(loglevel)
 
     ntlm_re = re.compile(r'^[0-9a-f]{32}:.*')
@@ -61,35 +76,82 @@ def resolve(hashes, potfile, admins, table, to_clipboard, loglevel):
         dict
     )
 
-    admins = pipe(
-        admins,
-        slurplines,
-        map(strip),
-        map(lower),
-        set,
-    ) if admins else set()
+    def get_users(path: Path):
+        return pipe(
+            path,
+            slurplines,
+            map(strip()),
+            map(lower),
+            set,
+        ) if path else set()
+
+    admins = get_users(admins)
     if admins:
         log.info(
             f'Found {len(admins)} admin account names'
         )
+    domain_admins = get_users(domain_admins)
 
-    def is_admin(u: str):
-        name = u.split('/')[-1]
-        return name in admins
+    @curry
+    def is_in_admin_list(admin_list, u: str):
+        name = u.split('/')[-1].lower()
+        return name in admin_list
+
+    is_admin = is_in_admin_list(admins)
+    is_domain_admin = is_in_admin_list(domain_admins)
 
     def tr_f(u, h):
-        return f'| `{u or " "}` | `{h2pt[h] or " "}` |' + (
-            (f' **Yes** |' if is_admin(u) else '  |') 
-            if admins else ''
+        return (
+            '| ' + 
+            pipe(
+                (
+                    f'`{u}`' if u else '',
+                    f'`{h}`' if include_hashes else None,
+                    f'`{h2pt[h]}`' if h2pt[h] else '',
+                    (f'**Yes**' if is_admin(u) else '') if admins else None,
+                    (f'**Yes**' if is_domain_admin(u) else '') if domain_admins else None,
+                ),
+                filter(lambda v: v is not None),
+                ' | '.join,
+            ) +
+            ' |'
         )
 
-    row_formatter = tr_f if table else lambda u, h: f'{u}\t{h2pt[h]}'
+    def norm_f(u, h):
+        return pipe(
+            (
+                f'{u}',
+                (f'{h}') if include_hashes else None,
+                f'{h2pt[h]}',
+                ('\thas_admin' if is_admin(u) else '\t') if admins else None,
+                ('\tdomain_admin' if is_domain_admin(u) else '\t') if domain_admins else None,
+            ),
+            filter(lambda v: v is not None),
+            '\t'.join,
+        )
+
+    row_formatter = tr_f if table else norm_f
+
+    def admins_at_top(rows):
+        return pipe(
+            rows,
+            sort_by(vcall(lambda u, h: (
+                (
+                    0 if is_domain_admin(u) else 1, 
+                    0 if is_admin(u) else 1, 
+                ),
+                u.lower(), h,
+            ))),
+        )
+
+    row_sorter = admins_at_top if (admins or domain_admins) else noop
 
     return pipe(
         u2h.items(),
-        sorted,
+        sort_by(vcall(lambda u, h: (u.lower(), h))),
         vmap(lambda u, h: (u, h.split(':')[-1])),
         vfilter(lambda u, h: h in h2pt),
+        row_sorter,
         vmap(row_formatter),
         '\n'.join,
         pyperclip.copy if to_clipboard else print,

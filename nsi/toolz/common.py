@@ -58,7 +58,8 @@ __all__ = [
     'flatdict', 'float_or_zero', 'get_t', 'help_text',
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int', 'is_numeric',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
-    'is_some', 'is_not_none', 'is_str', 'items', 'values', 'keys', 'log_lines', 
+    'is_some', 'is_not_none', 'is_str', 'items', 'values', 'keys', 
+    'log_lines', 'log_obj',
     'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe', 'maybe_call',
     'max', 'maybe_first', 'maybe_float', 'maybe_int', 'maybe_last',
     'maybe_max', 'maybe_min', 'maybe_pipe', 'maybe_second', 'min',
@@ -90,6 +91,14 @@ def log_lines(log_function, lines):
         mapcat(splitlines),
         filter(None),
         mapdo(log_function),
+    )
+
+def log_obj(log_function: Callable[[str], None], obj: Any):
+    pipe(
+        obj,
+        pprint.pformat,
+        splitlines,
+        log_lines(log_function),
     )
 
 @curry

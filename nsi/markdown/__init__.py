@@ -6,26 +6,27 @@ import markdown as _markdown
 from . import (
     meta_yaml, card, table, yaml_data, image_fig,
 )
-from ..toolz import *
+from ..toolz import (
+    pipe, curry, concatv, merge, is_seq, compose_left, splitlines,
+    map, filter, memoize
+)
 from .. import logging
 
 log = logging.new_log(__name__)
 
-@curry
-def markdown(content: str, *, extensions: T.Sequence[str] = None, 
-             extension_configs: T.Dict[str, dict] = None,
-             base_path: T.Union[str, Path] = '.'):
-    class HtmlWithMeta(str):
-        meta = None
-
-    md = _markdown.Markdown(
+@memoize
+def get_md(extensions: T.Sequence[str], extension_configs: T.Dict[str, dict], 
+           base_path: str|Path = '.'):
+    return _markdown.Markdown(
         extensions = pipe(
             concatv(
-                ['nsi.markdown.meta_yaml',
-                 'nsi.markdown.yaml_data',
-                 'nsi.markdown.card',
-                 'nsi.markdown.image_fig',
-                 'nsi.markdown.table'],
+                [
+                    'nsi.markdown.meta_yaml',
+                    'nsi.markdown.yaml_data',
+                    'nsi.markdown.card',
+                    'nsi.markdown.image_fig',
+                    'nsi.markdown.table'
+                ],
                 [
                     'extra', 
                     'codehilite', 
@@ -38,7 +39,6 @@ def markdown(content: str, *, extensions: T.Sequence[str] = None,
             set,
             tuple,
         ),
-            
         extension_configs = merge(
             {
                 'extra': {},
@@ -56,11 +56,22 @@ def markdown(content: str, *, extensions: T.Sequence[str] = None,
         ),
     )
 
+@curry
+def markdown(content: str, *, extensions: T.Sequence[str] = None, 
+             extension_configs: T.Dict[str, dict] = None,
+             base_path: T.Union[str, Path] = '.'):
+    class HtmlWithMeta(str):
+        meta = None
+
+    md = get_md(
+        extensions, extension_configs, base_path=base_path
+    )
     output = HtmlWithMeta(md.convert(content))
     output.meta = md.meta or {}
     return output
 
-def make_table(columns=None, col_map=None):
+def make_table(columns=None, col_map=None, 
+               columns_as_code: T.Sequence[int|str] = None):
     '''Functional markdown table maker. Given columns (i.e. row dict keys) and
     map from those keys to final header names, return table-making function that
     takes an iterable of rows and produces a markdown table.

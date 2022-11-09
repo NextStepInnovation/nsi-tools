@@ -4,7 +4,9 @@ import socket
 import contextlib
 from pathlib import Path
 from typing import Union
-from ipaddress import ip_address, ip_interface, ip_network
+from ipaddress import (
+    ip_address, ip_interface, ip_network, IPv4Address, IPv6Address,
+)
 
 import ifcfg
 
@@ -59,10 +61,17 @@ ip_only_re = re.compile(f'^{ip_re.pattern}$')
 
 def to_ipv4(ip: str):
     try:
-        ip_obj = ip_address(ip)
-        ipv4 = ip_obj.ipv4_mapped
-        if ipv4:
-            return str(ipv4)
+        match ip_address(ip):
+            case IPv4Address() as ipv4:
+                return str(ipv4)
+            case IPv6Address() as ipv6:
+                ipv4 = ipv6.ipv4_mapped
+                if ipv4:
+                    return str(ipv4)
+            case unhandled:
+                log.error(
+                    f'Could not determine IP for {repr(ip)}'
+                )
     except ValueError:
         pass
     match = ip_re.search(ip)
