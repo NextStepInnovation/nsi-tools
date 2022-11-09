@@ -114,13 +114,19 @@ def finalize_stats(stats: dict):
 
 final_running_stats = compose_left(running_stats, finalize_stats)
 
+DEFAULT_MAX_EXAMPLES = 10
+
 @ensure_paths
-def directory_metadata(root: Path, *, min_mtime: date = None):
+def directory_metadata(root: Path, *, min_mtime: date = None, 
+                       max_examples: int = DEFAULT_MAX_EXAMPLES,
+                       skip_dirs: T.Sequence[str] = None, 
+                       no_case: bool = True, 
+                       writer: T.Callable[[dict], int] = None):
     '''
     Walk a directory, gathing metadata about the files contained within
     '''
     log.info(f'Building metadata for directory: {root}')
-
+    
     meta = {
         'root': root,
         'extensions': {
@@ -160,7 +166,42 @@ def directory_metadata(root: Path, *, min_mtime: date = None):
     dirs = defaultdict(int)
     skipped = 0
     batch_size = 1e5
-    for path in walk(root):
+
+    def finalize():
+        meta['size']['file'] = final_running_stats(meta['size']['file'], file_sizes)
+        # meta['size']['file']['min'] = maybe_min(file_sizes)
+        # meta['size']['file']['max'] = maybe_max(file_sizes)
+        # meta['size']['file']['mean'] = maybe_mean(file_sizes)
+        # meta['size']['file']['median'] = maybe_median(file_sizes)
+        # meta['size']['file']['mode'] = maybe_mode(file_sizes)
+
+        meta['totals']['dirs'] = len(dirs)
+        dir_sizes = tuple(dirs.values())
+        meta['size']['dir'] = final_running_stats(meta['size']['dir'], dir_sizes)
+        # meta['size']['dir']['min'] = maybe_min(dir_sizes)
+        # meta['size']['dir']['max'] = maybe_max(dir_sizes)
+        # meta['size']['dir']['mean'] = maybe_mean(dir_sizes)
+        # meta['size']['dir']['median'] = maybe_median(dir_sizes)
+        # meta['size']['dir']['mode'] = maybe_mode(dir_sizes)
+
+        for f_t in ['file', 'dir']:
+            for t_t in ['created', 'modified']: #, 'accessed']:
+                meta['times'][f_t][t_t] = final_running_stats(
+                    meta['times'][f_t][t_t], times[f_t][t_t]
+                )
+                # meta['times'][f_t][t_t]['min'] = maybe_min(times[f_t][t_t])
+                # meta['times'][f_t][t_t]['max'] = maybe_max(times[f_t][t_t])
+                # meta['times'][f_t][t_t]['mean'] = maybe_mean(times[f_t][t_t])
+                # meta['times'][f_t][t_t]['median'] = maybe_median(times[f_t][t_t])
+                # meta['times'][f_t][t_t]['mode'] = maybe_mode(times[f_t][t_t])
+                for t in ['min', 'max', 'mean']: #, 'median', 'mode']:
+                    meta['times'][f_t][t_t][t] = maybe_pipe(
+                        meta['times'][f_t][t_t][t],
+                        datetime.fromtimestamp,
+                        lambda dt: dt.date(),
+                    )
+
+    for path in walk(root, skip_dirs=skip_dirs):
         if min_mtime and mtime(path) < maybe_dt(min_mtime):
             if skipped and skipped % 10000 == 0:
                 log.info(f'  skipped... {skipped} ({root})')
@@ -172,19 +213,22 @@ def directory_metadata(root: Path, *, min_mtime: date = None):
             log.debug(f'  dir: {path.parent}')
         log.debug(f'  file: {path}')
         ext_d = meta['extensions']
-        if path.suffix not in ext_d:
-            ext_d[path.suffix] = {
+
+        def suffix(path):
+            return path.suffix.lower() if no_case else path.suffix
+
+        if suffix(path) not in ext_d:
+            ext_d[suffix(path)] = {
                 'type': file_type(path),
                 'examples': [],
+                'total': 0,
             }
-        if len(ext_d[path.suffix]['examples']) < 5:
-            ext_d[path.suffix]['examples'].append(path)
+            
+        if len(ext_d[suffix(path)]['examples']) < max_examples:
+            ext_d[suffix(path)]['examples'].append(path)
+        ext_d[suffix(path)]['total'] += 1
 
         meta['totals']['files'] += 1
-        if meta['totals']['files'] % 10000 == 0:
-            log.info(
-                f"  currently on file {meta['totals']['files']} ({root})"
-            )
 
         file_sizes.append(file_size(path))
         times['file']['created'].append(ctime(path).timestamp())
@@ -209,37 +253,12 @@ def directory_metadata(root: Path, *, min_mtime: date = None):
 
         dirs[path.parent] += 1
 
-    meta['size']['file'] = final_running_stats(meta['size']['file'], file_sizes)
-    # meta['size']['file']['min'] = maybe_min(file_sizes)
-    # meta['size']['file']['max'] = maybe_max(file_sizes)
-    # meta['size']['file']['mean'] = maybe_mean(file_sizes)
-    # meta['size']['file']['median'] = maybe_median(file_sizes)
-    # meta['size']['file']['mode'] = maybe_mode(file_sizes)
-
-    meta['totals']['dirs'] = len(dirs)
-    dir_sizes = tuple(dirs.values())
-    meta['size']['dir'] = final_running_stats(meta['size']['dir'], dir_sizes)
-    # meta['size']['dir']['min'] = maybe_min(dir_sizes)
-    # meta['size']['dir']['max'] = maybe_max(dir_sizes)
-    # meta['size']['dir']['mean'] = maybe_mean(dir_sizes)
-    # meta['size']['dir']['median'] = maybe_median(dir_sizes)
-    # meta['size']['dir']['mode'] = maybe_mode(dir_sizes)
-
-    for f_t in ['file', 'dir']:
-        for t_t in ['created', 'modified']: #, 'accessed']:
-            meta['times'][f_t][t_t] = final_running_stats(
-                meta['times'][f_t][t_t], times[f_t][t_t]
+        if meta['totals']['files'] % 10000 == 0:
+            log.info(
+                f"  currently on file {meta['totals']['files']} ({root})"
             )
-            # meta['times'][f_t][t_t]['min'] = maybe_min(times[f_t][t_t])
-            # meta['times'][f_t][t_t]['max'] = maybe_max(times[f_t][t_t])
-            # meta['times'][f_t][t_t]['mean'] = maybe_mean(times[f_t][t_t])
-            # meta['times'][f_t][t_t]['median'] = maybe_median(times[f_t][t_t])
-            # meta['times'][f_t][t_t]['mode'] = maybe_mode(times[f_t][t_t])
-            for t in ['min', 'max', 'mean']: #, 'median', 'mode']:
-                meta['times'][f_t][t_t][t] = maybe_pipe(
-                    meta['times'][f_t][t_t][t],
-                    datetime.fromtimestamp,
-                    lambda dt: dt.date(),
-                )
+            writer(meta) if writer else None
+
+    finalize()
 
     return meta

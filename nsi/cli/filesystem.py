@@ -40,11 +40,30 @@ directories.
     help="Don't run command, just show what shell commands would have run",
 )
 @click.option(
+    '-s', '--skip-dir', multiple=True, help='''
+    Skip processing on all files in this directory
+    '''
+)
+@click.option(
+    '-e', '--max-examples', type=int, default=filesystem.DEFAULT_MAX_EXAMPLES,
+    show_default=True,
+    help='''
+    Maximum number of examples of each file extension
+    '''
+)
+@click.option(
+    '-C', '--case-sensitive', is_flag=True, help='''
+    Treat all files/extensions/etc. in a case-sensitive manner
+    '''
+)
+@click.option(
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
-def metadata(directories, min_mtime, ssh, echo, dry_run, loglevel):
+def metadata(directories, min_mtime, ssh, echo, dry_run, skip_dir, max_examples, 
+             case_sensitive, loglevel):
     logging.setup_logging(loglevel)
+    log.debug(directories)
     def outpath(path):
         return path.parent / f'meta-{path.name.replace(" ", "-")}.yml'
 
@@ -63,7 +82,15 @@ def metadata(directories, min_mtime, ssh, echo, dry_run, loglevel):
         f'Starting metadata search for {len(directories)} dirs with minimum'
         f' modification time {min_mtime}'
     )
-    
+
+    @curry
+    def writer(output_path: Path, meta: dict):
+        return pipe(
+            meta,
+            no_pyrsistent,
+            yaml.dump,
+            output_path.write_text,
+        )
     
     def meta(path):
         if dry_run:
@@ -79,11 +106,14 @@ def metadata(directories, min_mtime, ssh, echo, dry_run, loglevel):
             return None
         return pipe(
             filesystem.directory_metadata(
-                path, min_mtime=min_mtime,
+                path, min_mtime=min_mtime, skip_dirs=skip_dir,
+                max_examples=max_examples, no_case=(not case_sensitive),
+                writer=writer(output_path),
             ),
-            no_pyrsistent,
-            yaml.dump,
-            output_path.write_text,
+            writer(output_path),
+            do(lambda b: log.info(
+                f'  .. wrote {b} bytes to {output_path}'
+            )),
         )
 
     pipe(

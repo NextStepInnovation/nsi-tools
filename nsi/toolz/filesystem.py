@@ -6,6 +6,7 @@ import tempfile # noqa
 import typing as T
 from datetime import datetime
 import functools
+import pprint
 
 from pymaybe import Nothing
 import chardet
@@ -13,7 +14,7 @@ import charset_normalizer
 from toolz.functoolz import compose_left, compose
 
 from .common import (
-    pipe, call, concatv, vmapcat, curry, map, filter,
+    pipe, call, concatv, vmapcat, curry, map, filter, vfilter,
     new_log, splitlines, merge, memoize, deref,
 )
 
@@ -130,7 +131,7 @@ def glob(glob_expr: str, path: Path):
     return path.glob(glob_expr)
 
 @ensure_paths
-def walk(path: Path):
+def walk(path: Path, resolve: bool = True, skip_dirs: T.Sequence[str] = None):
     '''Return os.walk(path) as sequence of Path objects
 
     >>> with tempfile.TemporaryDirectory() as temp:
@@ -143,12 +144,15 @@ def walk(path: Path):
     True
 
     '''
-    if path.is_file():
-        return [path.resolve()]
-    return pipe(
-        os.walk(path.resolve()),
-        vmapcat(lambda root, dirs, files: [Path(root, f) for f in files]),
-    )
+    skip_dirs = set(skip_dirs or [])
+    for root, dirs, files in os.walk(path):
+        assert str(Path(root)) not in skip_dirs
+        for i, d in tuple(enumerate(dirs)):
+            str_d = str(Path(root, d))
+            if str_d in skip_dirs:
+                log.info(f'Removing {str_d}')
+                dirs.remove(d)
+        yield from [Path(root, f) for f in files]
 
 @curry
 def walkmap(func, root):
