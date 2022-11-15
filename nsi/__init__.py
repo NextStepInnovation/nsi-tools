@@ -26,5 +26,7 @@ from . import (
     responder,
     filesystem,
     grep,
+    masscan,
+    ldap,
 )
 __version__ = '0.0.1'

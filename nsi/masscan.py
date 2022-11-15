@@ -5,18 +5,65 @@
 from pathlib import Path
 # from subprocess import getoutput
 import shlex
+import re
 from datetime import datetime
 
 from .toolz import (
     pipe, curry, map, filter, groupby, valmap,
     vmap, strip_comments, is_seq, is_int, noop,
-    do,
+    do, slurp, to_regex,
 )
+from . import toolz as _
 from .shell import getoutput
 from . import data
 from . import logging
 
 log = logging.new_log(__name__)
+
+
+mscan_gnmap_re = to_regex(
+    r'Timestamp:\s+(?P<ts>\d+)\s+'
+    r'Host:\s+(?P<ip>\d+\.\d+\.\d+\.\d+)\s+\((?P<name>.*?)\)\s+'
+    r'Ports:\s+(?P<port>\d+)/'
+    r'(?P<state>\w*?)/'
+    r'(?P<proto>\w*?)/'
+    r'(?P<v0>.*?)/'
+    r'(?P<guess>\w.*?)/'
+    r'(?P<v1>.*?)/(?P<v2>.*?)',
+    re.M,
+)
+
+def is_gnmap(path: Path):
+    return pipe(
+        path,
+        slurp,
+        mscan_gnmap_re.search,
+        bool,
+    )
+
+def parse_gnmap(path: Path):
+    return pipe(
+        path, 
+        _.slurplines, 
+        _.groupdicts(mscan_gnmap_re),
+        _.groupby('ip'),
+        _.valmap(lambda dicts: _.merge(
+            {'ip': dicts[0]['ip'], 'name': dicts[0]['name']},
+            {'ports': pipe(
+                dicts,
+                map(_.remove_keys(['ip', 'name'])), 
+                map(lambda d: _.merge(
+                    {'service': ''}, d, {
+                        'port': int(d['port']),
+                    },
+                )),
+                tuple,
+            )},
+        )),
+        _.values,
+        _.map(_.cmerge({'ip': '', 'name': '', 'ports': []})),
+    )
+
 
 @curry
 def masscan(ip_or_range_or_path, *, ports=None, getoutput=getoutput,
