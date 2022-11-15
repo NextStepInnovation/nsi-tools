@@ -22,6 +22,13 @@ directories.
     nargs=-1,
 )
 @click.option(
+    '-o', '--output-dir', type=click.Path(), default='.',
+    show_default=True,
+    help='''
+    Ouptut directory for metadata files
+    ''',
+)
+@click.option(
     '-m', '--min-mtime', type=click.DateTime(),
     # default=str((datetime.now() - timedelta(days=6 * 30)).date()),
     help='''
@@ -57,20 +64,34 @@ directories.
     '''
 )
 @click.option(
+    '--keep-empty', is_flag=True, help='''
+    Keep empty metadata files (i.e. ones with no files found)
+    '''
+)
+@click.option(
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
-def metadata(directories, min_mtime, ssh, echo, dry_run, skip_dir, max_examples, 
-             case_sensitive, loglevel):
+def metadata(directories, min_mtime, output_dir, ssh, echo, dry_run, skip_dir, 
+             max_examples, case_sensitive, keep_empty, loglevel):
     logging.setup_logging(loglevel)
     log.debug(directories)
-    def outpath(path):
-        return path.parent / f'meta-{path.name.replace(" ", "-")}.yml'
+    output_dir_path = Path(output_dir)
+    done_dir_path = Path(output_dir_path) / '.nsi-meta'
+    if not output_dir_path.exists():
+        log.info(f'Creating output directory: {output_dir_path}')
+        output_dir_path.mkdir(parents=True)
+    done_dir_path.mkdir(parents=True, exist_ok=True)
+
+    def done_path(path: Path) -> Path:
+        return done_dir_path / (path.name + '.done')
+    def output_path(path: Path) -> Path:
+        return output_dir_path / f'meta-{path.name.replace(" ", "-")}.yml'
 
     directories = pipe(
         directories, 
         map(Path), 
-        filter(lambda p: not outpath(p).exists()),
+        # filter(lambda p: not done_path(p).exists()),
         tuple,
     )
 
@@ -84,42 +105,48 @@ def metadata(directories, min_mtime, ssh, echo, dry_run, skip_dir, max_examples,
     )
 
     @curry
-    def writer(output_path: Path, meta: dict):
+    def writer(path: Path, meta: dict):
+        if (meta['totals']['files'] + meta['totals']['dirs']) == 0 and not keep_empty:
+            log.warning(f'{path} has no files. Not writing...')
+            done_path(path).write_text('')
+            return 0
+        
         return pipe(
             meta,
             no_pyrsistent,
             yaml.dump,
-            output_path.write_text,
+            path.write_text,
+            do(lambda x: done_path(path).write_text('')),
         )
     
-    def meta(path):
+    def meta(meta_path: Path):
         if dry_run:
             log.warning(
                 f'DRY RUN: doing metadata search for {path}'
             )
             return
-        output_path = outpath(path)
-        if output_path.exists():
+        path = output_path(meta_path)
+        if done_path(path).exists():
             log.warning(
-                f'YAML output found {output_path}... skipping'
+                f'YAML output found {path}... skipping'
             )
             return None
         return pipe(
             filesystem.directory_metadata(
-                path, min_mtime=min_mtime, skip_dirs=skip_dir,
+                meta_path, min_mtime=min_mtime, skip_dirs=skip_dir,
                 max_examples=max_examples, no_case=(not case_sensitive),
-                writer=writer(output_path),
+                writer=writer(path),
             ),
-            writer(output_path),
+            writer(path),
             do(lambda b: log.info(
-                f'  .. wrote {b} bytes to {output_path}'
+                f'  .. wrote {b} bytes to {path}'
             )),
         )
 
     pipe(
         directories,
-        parallel.thread_map(meta),
+        parallel.thread_map(meta, max_workers=5),
         tuple,
-        lambda t: log.info(f'  wrote {len(t)} files'),
+        lambda t: log.info(f'  wrote {len([v for v in t if v])} files'),
     )
 
