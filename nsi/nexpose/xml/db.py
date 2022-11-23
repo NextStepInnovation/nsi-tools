@@ -1,7 +1,7 @@
 from ast import For
 import pprint
 from pathlib import Path
-from turtle import right
+import re
 import typing as T
 
 from sqlalchemy import (
@@ -16,6 +16,7 @@ from ... import logging
 from ...toolz import (
     pipe, vmap, merge, ensure_paths, get, filter, map, vfilter,
     take, mapcat, do, newer, first, maybe_first, groupby, deref, valmap,
+    igrep, is_str, is_seq, curry, complement, strip, get_ips_from_lines,
 )
 
 from . import parser
@@ -34,6 +35,12 @@ __all__ = [
 ]
 
 log = logging.new_log(__name__)
+
+def address_seq(addresses: IpList):
+    return pipe(
+        addresses,
+        get_ips_from_lines,
+    )
 
 @ensure_paths
 def get_db_path(xml_path: Path) -> Path:
@@ -269,12 +276,13 @@ class ServiceTest(Test):
 
     @classmethod
     def node_filter(cls, addresses: IpList):
-        return cls.service.has(
-            Service.endpoint.has(
-                Endpoint.node.has(
-                    Node.address.in_(addresses)
-                )
-            )
+        return pipe(
+            addresses,
+            address_seq,
+            Node.address.in_,
+            Endpoint.node.has,
+            Service.endpoint.has,
+            cls.service.has,
         )
 
     @property
@@ -291,7 +299,12 @@ class NodeTest(Test):
 
     @classmethod
     def node_filter(cls, addresses: IpList):
-        return cls.node.has(Node.address.in_(addresses))
+        return pipe(
+            addresses,
+            address_seq,
+            Node.address.in_,
+            cls.node.has
+        )
 
 
 '''
@@ -523,7 +536,7 @@ class Node(T.TypedDict):
 class Node(Base, NexposeData):
     typed_dict = types.Node
     repr_keys = (
-        'address', 'risk_score', 'site_name', 'device_id',
+        'address', 'risk_score', 'site_name', 'device_id', 'os',
     )
     ingest_keys = (
         'address', 'device_id', 'risk_score', 'scan_template', 'site_importance',
@@ -557,15 +570,74 @@ class Node(Base, NexposeData):
     def all_tests(self):
         yield from self.tests
         for endpoint in self.endpoints:
-                for service in endpoint.services:
-                    yield from service.tests
+            for service in endpoint.services:
+                yield from service.tests
+
+    @classmethod
+    @curry
+    def has_name(cls, name: str | T.Tuple[str], node: 'Node', *, no: bool = False):
+        names = [name] if is_str(name) else name
+        return pipe(
+            names,
+            mapcat(lambda n: pipe(node.names, map(str), igrep(n))),
+            tuple,
+            complement(bool) if no else bool,
+        )
 
     @property
     def name(self):
         return self.names[0]
 
+    @classmethod
+    @curry
+    def has_os(cls, os: str | T.Tuple[str], node: 'Node', *, no: bool = False):
+        oses = [os] if is_str(os) else os
+        node_os = cls.get_os(node)
+        return pipe(
+            oses,
+            filter(lambda o: re.search(o, node_os, re.I)),
+            tuple,
+            complement(bool) if no else bool,
+        )
+
+    @classmethod
+    @curry
+    def get_os(cls, node: 'Node', with_certainty: bool = True) -> str:
+        if node.fingerprint is None:
+            return 'Unknown OS'
+        fp = node.fingerprint
+        parts = (
+            fp.vendor if fp.vendor != 'Microsoft' else '',
+            fp.product,
+            fp.version,
+            f"({fp.device_class})" if fp.device_class else '',
+            (f"[{int(float(fp.certainty)*100)}% certain]" 
+            if (fp.certainty and float(fp.certainty) < 1.0 and with_certainty) 
+            else ''),
+        )
+
+        return pipe(
+            parts,
+            filter(None),
+            lambda parts: parts if parts else ('Unknown OS',),
+            ' '.join,
+        )
+
+    @classmethod
+    @curry
+    def has_ports(cls, port: str | T.Tuple[int], node: 'Node', *, no: bool = False):
+        ports = set(port if is_seq(port) else [port])
+        return pipe(
+            node.ports & ports,
+            complement(bool) if no else bool,
+        )
+
     @property
-    def fingerprint(self):
+    def ports(self) -> T.Set[int]:
+        return set(e.port for e in self.endpoints)
+
+    @property
+    def fingerprint(self) -> NodeFingerprint:
         if self.fingerprints:
             return self.fingerprints[0]
 
@@ -872,7 +944,12 @@ class Finding(Base, NexposeData):
 
     @classmethod
     def node_filter(cls, addresses: T.Sequence[str]):
-        return cls.nodes.any(Node.address.in_(addresses))
+        return pipe(
+            addresses,
+            address_seq,
+            Node.address.in_,
+            cls.nodes.any,
+        )
 
     @classmethod
     def tag_filter(cls, include_tags, exclude_tags):

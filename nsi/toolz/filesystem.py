@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import inspect
-import functools
+import itertools
 import tempfile # noqa
 import typing as T
 from datetime import datetime
@@ -15,7 +15,7 @@ from toolz.functoolz import compose_left, compose
 
 from .common import (
     pipe, call, concatv, vmapcat, curry, map, filter, vfilter,
-    new_log, splitlines, merge, memoize, deref,
+    new_log, splitlines, merge, memoize, deref, is_seq, vmap, vcall,
 )
 
 log = new_log(__name__)
@@ -28,6 +28,7 @@ __all__ = [
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'slurpbchunks',
     'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline', 
     'stat', 'mstat', 'ctime', 'mtime', 'atime', 'file_size',
+    'mkdir', 'mkdirp',
 ]
 
 # ----------------------------------------------------------------------
@@ -107,7 +108,7 @@ def ensure_paths(func, *, expanduser: bool=True, resolve: bool=False):
 
         args = list(args)
         for i in pos:
-            log.debug(f'ensure_paths: arg {i} {args[i]}')
+            # log.debug(f'ensure_paths: arg {i} {args[i]}')
             args[i] = Path(args[i])
             if expanduser:
                 args[i] = args[i].expanduser()
@@ -292,19 +293,43 @@ file_size = compose_left(
     stat, deref('st_size'),
 )
 
-@curry
-def newer(path: T.Union[str, Path], test: T.Union[str, Path]):
+Pathlike = T.Union[str, Path]
+OneOrMorePaths = T.Union[Pathlike, T.Sequence[Pathlike]]
+
+def time_compare(compare_f: T.Callable[[Pathlike, Pathlike], bool], 
+                 path: OneOrMorePaths, test: OneOrMorePaths):
     '''Is the path newer than the test path?
 
     '''
-    return ctime(path) > ctime(test)
-
+    paths = [path] if not is_seq(path) else path
+    tests = [test] if not is_seq(test) else test
+        
+    return pipe(
+        (paths, tests),
+        vcall(itertools.product),
+        vmap(compare_f),
+        all,
+    )
+        
 @curry
-def older(path: T.Union[str, Path], test: T.Union[str, Path]):
+def newer(path: OneOrMorePaths, test: OneOrMorePaths):
     '''Is the path older than the test path?
 
     '''
-    return ctime(path) < ctime(test)
+    return time_compare(
+        lambda path, test: ctime(path) > ctime(test),
+        path, test,
+    )
+
+@curry
+def older(path: OneOrMorePaths, test: OneOrMorePaths):
+    '''Is the path older than the test path?
+
+    '''
+    return time_compare(
+        lambda path, test: ctime(path) < ctime(test),
+        path, test,
+    )
 
 @ensure_paths
 def backup_path(path: Path):
@@ -330,3 +355,9 @@ def convert_utf8(path: Path):
         path.write_text,
     )
 
+@curry
+@ensure_paths
+def mkdir(path: Path, **kwargs):
+    path.mkdir(**kwargs)
+
+mkdirp = mkdir(exist_ok=True, parents=True)
