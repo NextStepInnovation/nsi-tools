@@ -3,6 +3,7 @@
 from pathlib import Path
 import logging
 import pprint
+import re
 from weakref import proxy
 
 import click
@@ -46,6 +47,14 @@ log = logging.new_log(__name__)
     help='Run with proxychains',
 )
 @click.option(
+    '--socks-proxy-data', type=click.Path(
+        exists=True, dir_okay=False,
+    ), help='''
+    SOCKS5 proxy information from impacket-ntlmrelayx's "socks" command to be
+    parsed for domain/username/share information
+    '''
+)
+@click.option(
     '--dry-run', is_flag=True,
     help="Don't run command",
 )
@@ -55,16 +64,36 @@ log = logging.new_log(__name__)
 )
 def enumerate_smb_shares(ippath, output_dir, target, username, password, 
                          domain, ssh, max_workers, echo, force, 
-                         dry_run, proxychains, loglevel):
+                         dry_run, proxychains, socks_proxy_data, loglevel):
     logging.setup_logging(loglevel)
     echo = echo or loglevel == 'debug'
 
-    if ippath:
-        log.info(f'Reading IPs from path: {ippath}')
-        ips = _.get_ips_from_file(ippath)
-    elif target:
-        log.info(f'Reading IP from target: {target}')
-        ips = _.ip_to_seq(target)
+    ip_data = []
+    if ippath or target:
+        if target:
+            log.info(f'Reading IP from target: {target}')
+            ips = _.ip_to_seq(target)
+        else:
+            log.info(f'Reading IPs from path: {ippath}')
+            ips = _.get_ips_from_file(ippath)
+        ip_data = _.pipe(
+            ips,
+            _.map(lambda ip: (domain, username, password, ip)),
+            tuple,
+        )
+    elif socks_proxy_data:
+        socks_re = re.compile(
+            r'SMB\s+(?P<ip>\d+\.\d+\.\d+\.\d+)\s+(?P<domain>\w+?)/(?P<user>\w+)\s+'
+            r'(?P<admin>TRUE|FALSE)\s+445'
+        )
+        ip_data = _.pipe(
+            socks_proxy_data,
+            _.slurplines,
+            _.map(_.groupdict(socks_re)),
+            _.map(_.get(['domain', 'user', '_x_', 'ip'], default='')),
+            _.filter(all),
+            tuple,
+        )
     else:
         log.error('No IP information given')
         raise click.UsageError(
@@ -79,18 +108,18 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
     if ssh:
         getoutput = common.ssh_getoutput(ssh, echo=echo, dry_run=dry_run)
 
-    partial_args = smb.session.new_args(
-        domain, username, password, 
-        getoutput=getoutput,
-        proxychains=proxychains,
-        dry_run=dry_run,
-    )
+    output_dirs = {
+        i[1]: Path(f'.smb-shares-{i[1] or "NULL"}-{_.nt(password)}') 
+        for i in ip_data
+    } if not output_dir else Path(output_dir)
+    for output_dir in set(output_dirs.values()):
+        output_dir.mkdir(exist_ok=True, parents=True)
 
-    output_dir = (
-        Path(output_dir) if output_dir 
-        else Path(f'.{username or "NULL"}-{_.md5(password)}-smb-shares')
-    )
-    output_dir.mkdir(exist_ok=True, parents=True)
+    # output_dir = (
+    #     Path(output_dir) if output_dir 
+    #     else Path(f'.{username or "NULL"}-{_.nt(password)}-smb-shares')
+    # )
+    # output_dir.mkdir(exist_ok=True, parents=True)
 
     # pmap = parallel.thread_map(max_workers=20)
     pmap = parallel.thread_map(max_workers=max_workers)
@@ -111,13 +140,21 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
         )
 
     @_.curry
-    def enum_shares_and_output(output_dir, ip):
+    def enum_shares_and_output(domain, username, password, ip):
+        partial_args = smb.session.new_args(
+            domain, username, password, ip,
+            getoutput=getoutput,
+            proxychains=proxychains,
+            dry_run=dry_run,
+        )
+
+        output_dir = output_dirs[username]
         output_path = output_dir / f"{ip}.txt"
         if output_path.exists() and not force:
             log.info(f'{output_path} exists... skipping.')
             return 
         try:
-            es_output = smb.session.enum_shares(partial_args(ip, ''))
+            es_output = smb.session.enum_shares(partial_args(''))
         except Exception as error:
             log.exception(
                 f'Problem with enum_shares for {ip}'
@@ -130,9 +167,7 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
             es_output,
             _.map(_.cmerge({'user': username, 'pass': password})),
             _.map(lambda share: (
-                share, smb.session.test_share_perms(partial_args(
-                    share['ip'], share['name'],
-                ))
+                share, smb.session.test_share_perms(partial_args(share['name']))
             )),
             _.vmap(lambda share, output: (
                 share, _.maybe_first(output, default={})
@@ -155,13 +190,16 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
         )
 
     _.pipe(
-        ips,
-        pmap(enum_shares_and_output(output_dir)),
+        ip_data,
+        pmap(_.vcall(enum_shares_and_output)),
         tuple,
     )
 
     _.pipe(
-        output_dir.glob('*.txt'),
+        output_dirs.values(),
+        set,
+        _.mapcat(lambda p: p.glob('*.txt')),
+        # output_dir.glob('*.txt'),
         _.map(lambda p: p.read_text().strip()),
         _.filter(None),
         '\n'.join,
