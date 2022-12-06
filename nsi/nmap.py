@@ -172,18 +172,27 @@ def nmap(ip_or_range: str, *, ports=None, top_ports=None,
       args (dict): Extra nmap arguments to pass. Default: None
 
     '''
-    ports = ''
+    ports_str = ''
+    comma_join = _.compose_left(_.map(str), ','.join)
     if ports:
-        if _.is_seq(ports):
-            ports = _.pipe(ports, _.map(str), ','.join)
-        ports = f'-p {ports}'
+        ports_str = _.pipe(
+            ports,
+            comma_join if _.is_seq(ports) else _.noop,
+            lambda ports: f'-p {ports}',
+        )
     elif top_ports:
-        ports = _.pipe(data.top_ports(int(top_ports)), ','.join)
-        ports = f'-p {ports}'
+        ports_str = _.pipe(
+            top_ports,
+            int,
+            data.top_ports,
+            comma_join,
+            lambda ports: f'-p {ports}',
+        )
+    else:
+        ports_str = ''
 
-    args = ''
     if _.is_dict(args):
-        args = _.pipe(
+        args_str = _.pipe(
             args.items(),
             _.vmap(lambda key, val: f'-{key} {val}'),
             ' '.join,
@@ -215,8 +224,8 @@ def nmap(ip_or_range: str, *, ports=None, top_ports=None,
     nmap_command = 'sudo nmap' if need_sudo else 'nmap'
     
     command = _.pipe(
-        f'{nmap_command} {ports} {syn} {version} {tcp} {udp}'
-        f' {os_discovery} {aggressive} {no_dns} {probe} {verbose} {args}'
+        f'{nmap_command} {ports_str} {syn} {version} {tcp} {udp}'
+        f' {os_discovery} {aggressive} {no_dns} {probe} {verbose} {args_str}'
         f' {output} -noninteractive {ip_or_range} ',
         shlex.split,            # clean up extra whitespace
         ' '.join,

@@ -8,13 +8,17 @@ import pprint
 import ipaddress
 import json
 import subprocess
+import textwrap
+import typing as T
 
 import click
 import pyperclip
 
 from .. import toolz as _
 from ..toolz import (
-    pipe, map, filter, mapcat, xlsx_to_clipboard,
+    pipe, map, map_t, filter, mapcat, xlsx_to_clipboard, groupby, valmap, 
+    get, items, vcall, vmap, is_dict, noop, first, ensure_paths, sort_by,
+    curry, concat,
 )
 from .. import (
     shell, parallel, logging, nmap, yaml,
@@ -62,7 +66,7 @@ def nse_ports(inpath, clipboard, stdout, no_sort, sep):
 
     return pipe(
         get_ports_from_content(content),
-        _.noop if no_sort else sorted,
+        noop if no_sort else sorted,
         map(str),
         sep.join,
         print if stdout or not clipboard else xlsx_to_clipboard,
@@ -179,14 +183,15 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
         ip_dict = pipe(
             input_path,
             nmap.parse_gnmap,
-            _.groupby('ip'),
-            _.valmap(_.first),
-            _.valmap(lambda D: pipe(
+            groupby('ip'),
+            valmap(first),
+            valmap(lambda D: pipe(
                 D['ports'],
-                _.map(_.get('port')),
+                map(get('port')),
                 tuple,
             )),
         )
+        log.info(ip_dict)
     else:
         input_content = target or path_cb_or_stdin(
             input_path, from_clipboard
@@ -195,11 +200,12 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
         ip_list = pipe(
             input_content,
             lambda c: c.splitlines(),
-            _.strip_comments,
+        _.strip_comments,
             filter(None),
             mapcat(_.ip_to_seq),
             tuple,
         )
+
 
     output_dir_path = Path(output_dir).expanduser()
     if not output_dir_path.exists():
@@ -225,10 +231,10 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
     if ip_dict:
         pipe(
             ip_dict,
-            _.items,
+            items,
             _.shuffled,
             pmap(
-                _.vcall(lambda ip, ports: nmap_command(ip, ports=ports))
+                vcall(lambda ip, ports: nmap_command(ip, ports=ports))
             ),
             tuple,
         )
@@ -244,7 +250,7 @@ def get_services(path):
     log.info(f'Loading YAML path: {path}')
     data = yaml.read_yaml(path)
     ports = data.get('host', {}).get('ports', {}).get('port', [])
-    if _.is_dict(ports):
+    if is_dict(ports):
         ports = [ports]
     for port in ports:
         port_number  = port.get('portid')
@@ -256,7 +262,7 @@ def get_services_from_json(path):
     log.info(f'Loading JSON path: {path}')
     
     with Path(path).expanduser().open() as rfp:
-        return _.pipe(
+        return pipe(
             json.load(rfp),
             nmap.get_services_from_nmap_dict,
         )
@@ -280,9 +286,19 @@ def get_services_from_json(path):
 @click.option(
     '-i', '--include-list', type=click.Path(exists=True)
 )
+@click.option(
+    '--max-col-width', default=50, help='''
+    Maximum column width, otherwise text is wrapped. (NOT IMPLEMENTED YET)
+    ''',
+)
+@click.option(
+    '--tsv', is_flag=True, help='''
+    Output in tab-separated value form
+    ''',
+)
 @click.option('--loglevel', default='info')
 def nmap_services(paths, no_ports, no_names, must_have_service, loglevel, 
-                  exclude_list, include_list):
+                  exclude_list, include_list, max_col_width, tsv):
     '''
     For some number of either JSON-encoded or grep-able nmap NMAP outputs, print
     out services found
@@ -300,7 +316,7 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
         _.get_ips_from_file,
     ) if include_list else []
 
-    @_.ensure_paths
+    @ensure_paths
     def get_services(path: Path):
         match path:
             case Path(suffix='.json'):
@@ -308,7 +324,7 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
             case Path(suffix='.gnmap'):
                 return pipe(
                     nmap.parse_gnmap(path),
-                    _.mapcat(lambda host: [{
+                    mapcat(lambda host: [{
                         'ip': host['ip'],
                         'iptup': _.ip_tuple(host['ip']),
                         'name': host['name'],
@@ -320,59 +336,74 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
                 )
 
         
-    rows = _.pipe(
+    rows = pipe(
         paths,
         parallel.thread_map(get_services),
-        _.concat,
-        _.filter(lambda r: (r['ip'] not in exclude_list) if exclude_list else True ),
-        _.filter(lambda r: (r['ip'] in include_list) if include_list else True ),
-        _.filter(lambda r: (bool(r['service'])) if must_have_service else True ),
-        _.sort_by(_.get(['port', 'iptup'])),
-        _.map(_.get(
+        concat,
+        filter(lambda r: (r['ip'] not in exclude_list) if exclude_list else True ),
+        filter(lambda r: (r['ip'] in include_list) if include_list else True ),
+        filter(lambda r: (bool(r['service'])) if must_have_service else True ),
+        sort_by(get(['port', 'iptup'])),
+        map(get(
             ['ip'] + 
             (['name'] if not no_names else []) + 
             (['port'] if not no_ports else []) + 
             ['guess', 'service',]
         )),
-        _.map(_.map_t(str)),
+        map(map_t(str)),
         tuple,
     )
 
-    col_maxes = _.pipe(
-        rows,
-        _.map(_.map_t(len)),
-        lambda rows: zip(*rows),
-        _.map(max),
-        tuple,
-    )
-    print(col_maxes)
-    col_formats = _.pipe(
-        col_maxes,
-        map(lambda m: f'{{0}}:<{m}'),
-    )
+    # def visual_row(col_maxes: T.Sequence[int], max_col_width: int, 
+    #                row: T.Sequence[str]) -> T.Iterable[T.Sequence[str]]:
+    #     if not any(m > max_col_width for m in col_maxes):
+    #         return [
+    #             f'{v}:<{m}' for m, v in zip(col_maxes, row)
+    #         ]
+    #     new_row = pipe(
+    #         zip(col_maxes, row),
+    #     )
 
-    _.pipe(
-        rows,
-        map(lambda r: pipe(
-            r, enumerate,
-            _.vmap(lambda j, v: v.ljust(col_maxes[j] + 1)),
+    @curry
+    def visual_table(max_col_width: int, rows: T.Iterable[T.Sequence[str]]) -> str:
+        rows = tuple(rows)
+        col_maxes = pipe(
+            rows,
+            map(map_t(len)),
+            lambda rows: zip(*rows),
+            map(max),
             tuple,
-        )),
-        _.map(' '.join),
-        '\n'.join,
+        )
+        log.info(col_maxes)
+        col_formats = pipe(
+            col_maxes,
+            map(lambda m: f'{{0:<{m}}}'),
+            tuple,
+        )
+        log.info(col_formats)
+        def visual_row(row):
+            return [
+                f.format(v) for f, v in zip(col_formats, row)
+            ]
+
+        return pipe(
+            rows,
+            map(visual_row),
+            map(' '.join),
+            '\n'.join,
+        )
+
+
+    def tsv_table(rows: T.Iterable[T.Sequence[str]]) -> str:
+        return pipe(
+            rows,
+            map('\t'.join),
+            '\n'.join,
+        )
+
+    pipe(
+        rows,
+        tsv_table if tsv else visual_table(max_col_width),
         print,
     )
 
-    # def service_str(t):
-    #     if no_ports:
-    #         return t[1]
-    #     return f'{t[0]:>8}: {t[1]}'
-
-    # _.pipe(
-    #     services,
-    #     map(service_str),
-    #     set,
-    #     lambda L: sorted(L) if no_ports else L,
-    #     '\n'.join,
-    #     print,
-    # )
