@@ -189,25 +189,28 @@ DIRB_TIMEOUT = (2 * 60)
 DIRB_PORT = 80
 
 def get_ssl_port(ssl, no_ssl, port):
-    if (ssl, no_ssl, port) == (False, False, None):
-        return False, 80
-    elif (ssl, no_ssl, port) == (True, False, None):
-        return True, 443
-    elif (ssl, no_ssl, port) == (True, False, 80):
-        return True, 80
-    elif (no_ssl, port) == (True, 443):
-        return False, 443
-    elif (ssl, port) == (False, 443):
-        return True, 443
-    elif port is None:
-        return False, 80
-    assert port
+    match (ssl, no_ssl, port):
+        case (False, False, None):
+            return False, 80
+        case (True, False, None):
+            return True, 443
+        case (True, False, 80):
+            return True, 80
+        case (_1, True, 443):
+            return False, 443
+        case (False, _2, 443):
+            return True, 443
+        case (_1, _2, None):
+            return False, 80
+    if not port:
+        raise AttributeError(
+            f'Invalid port: {port} (ssl: {ssl}) (no_ssl: {no_ssl})'
+        )
     return ssl, port
-
 
 @curry
 def dirb(host, port, ssl, *, timeout=DIRB_TIMEOUT,
-         getoutput=getoutput):
+         getoutput=getoutput, dry_run=False):
     if not host.startswith('http'):
         proto = f'http{"s" if ssl else ""}'
         url = f'{proto}://{host}'
@@ -220,7 +223,11 @@ def dirb(host, port, ssl, *, timeout=DIRB_TIMEOUT,
     command = f'dirb {url} -S -a "{agent}"'
 
     log.info(f'[dirb] command: {command}')
-    output = getoutput(command, timeout=timeout)
+    if dry_run:
+        log.warning('DRY RUN: not running command')
+        output = ''
+    else:
+        output = getoutput(command, timeout=timeout)
     
     return (output, pipe(
         output.splitlines(),
@@ -241,7 +248,7 @@ NIKTO_PORT = 80
 
 @curry
 def nikto(host, port, ssl, *, timeout=NIKTO_TIMEOUT,
-          getoutput=getoutput):
+          getoutput=getoutput, dry_run: bool = False):
     proto = f'http{"s" if ssl else ""}'
     if not host.startswith('http'):
         proto = f'http{"s" if ssl else ""}'
@@ -254,7 +261,11 @@ def nikto(host, port, ssl, *, timeout=NIKTO_TIMEOUT,
     command = f"nikto -useragent '{agent}' -host {url}"
 
     log.info(f'[nikto] command: {command}')
-    output = getoutput(command, timeout=timeout)
+    if dry_run:
+        log.warning('DRY RUN not running command')
+        output = ''
+    else:
+        output = getoutput(command, timeout=timeout)
     
     return (output, pipe(
         output.splitlines(),
