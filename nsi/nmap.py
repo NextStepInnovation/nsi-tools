@@ -191,6 +191,7 @@ def nmap(ip_or_range: str, *, ports=None, top_ports=None,
     else:
         ports_str = ''
 
+    args_str = ''
     if _.is_dict(args):
         args_str = _.pipe(
             args.items(),

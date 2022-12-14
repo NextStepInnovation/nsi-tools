@@ -35,7 +35,7 @@ def to_pyrsistent(obj):
     >>> to_pyrsistent({'a': [1, 2, 3]})['a'][0] = 2
     Traceback (most recent call last):
       ...
-    TypeError: 'pvectorc.PVector' object does not support item assignment
+    TypeError: ...
     '''
     # return pyrsistent.freeze(obj)
     if is_dict(obj):

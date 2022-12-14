@@ -9,6 +9,7 @@ import click
 
 from .. import logging
 from .. import nexpose
+from .. import yaml
 from ..toolz import *
 
 from .common import loglevel
@@ -204,4 +205,38 @@ def download_report(sites, config_path, name, output_path, force, keep):
     if not keep:
         log.info(f'Destroying report: {name}')
         nexpose.reports.destroy_report(api, name)
+    
+
+@nexpose_command.command(
+    help='''
+    For a given set of XML reports, get the relevant stats for the data in those
+    reports
+    '''
+)
+@click.argument('xml-paths', nargs=-1)
+@click.option(
+    '-o', '--output-path', type=click.Path(),
+    default='report-stats.yml', show_default=True,
+    help='''
+    Path to write Report stats.
+    '''
+)
+def report_stats(xml_paths, output_path):
+    log.info(f'Pulling stats for {len(xml_paths)} XML reports')
+
+    output_path = Path(output_path).expanduser()
+    if not output_path.parent.exists():
+        log.info(
+            f'Creating parent directory for {output_path}'
+        )
+        output_path.parent.mkdir(parents=True)
+
+    reports = pipe(
+        xml_paths,
+        map(lambda p: (str(p), nexpose.xml.stats.node_stats(p))),
+        dict,
+        yaml.write_yaml(output_path),
+    )
+
+
     

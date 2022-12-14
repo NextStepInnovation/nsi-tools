@@ -58,6 +58,6 @@ def write_yaml(path: T.Union[str, Path], obj: T.Any):
         case final_object: pass
 
     with path.open('w') as wfp:
-        dump(data, wfp)
+        dump(obj, wfp)
     return True
 

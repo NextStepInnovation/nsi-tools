@@ -623,6 +623,14 @@ class Node(Base, NexposeData):
             ' '.join,
         )
 
+    @property
+    def os(self):
+        return Node.get_os(self)
+
+    @property
+    def os_bare(self):
+        return Node.get_os(self, with_certainty=False)
+
     @classmethod
     @curry
     def has_ports(cls, port: str | T.Tuple[int], node: 'Node', *, no: bool = False):

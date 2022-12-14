@@ -4,8 +4,10 @@ import socket
 import contextlib
 from pathlib import Path
 from typing import Union
+import typing as T
 from ipaddress import (
     ip_address, ip_interface, ip_network, IPv4Address, IPv6Address,
+    IPv4Network, IPv6Network,
 )
 
 import ifcfg
@@ -23,8 +25,8 @@ __all__ = [
     'get_networks_from_content', 'get_networks_from_file',
     'get_networks_from_lines', 'get_slash', 'get_slash_from_mask', 'in_ip_range', 
     'ip_only_re', 'ip_re', 'ip_relaxed_re', 'ip_to_seq', 'ip_tuple', 
-    'is_comma_sep_ip', 'is_interface', 'to_ipv4',
-    'is_ip', 'is_ip_range', 'is_ipv4', 'is_network', 
+    'is_comma_sep_ip', 'is_interface', 'to_ipv4', 'to_ip_obj', 'to_network',
+    'is_ip', 'is_ip_range', 'is_ipv4', 'is_network', 'get_ip_filter',
     'sort_ips', 'sortips', 'unzpad', 'zpad',
 ]
 
@@ -78,6 +80,46 @@ def to_ipv4(ip: str):
     if match:
         return match.group()
     return ip
+
+IpObject = IPv4Address|IPv6Address|IPv4Network|IPv6Network
+def to_ip_obj(ip: str) -> None|IpObject:
+    if is_ip(ip):
+        return ip_address(ip)
+    elif is_interface(ip):
+        return ip_interface(ip)
+    elif is_network(ip):
+        return ip_network(ip)
+    log.error(
+        f'Could not translate {repr(ip)} into an IP object'
+    )
+
+def to_network(ip_data: str) -> None | IPv4Network | IPv6Network:
+    ip_obj = to_ip_obj(ip_data)
+    if ip_obj:
+        return ip_network(ip_obj)
+    log.error(
+        f'Cannot translate {repr(ip_data)} to an IP network'
+    )
+
+def get_ip_filter(ips: T.Sequence[str]) -> T.Callable[[str], bool]:
+    '''
+    Given a list of strings that could be IP addresses, IP interface
+    designations, or IP subnets, return a filter function that will determine if
+    a given IP string belongs to that set of things.
+    '''
+    networks: T.Sequence[IPv4Network|IPv6Network] = pipe(
+        ips,
+        map(to_network),
+        tuple,
+    )
+    def ip_filter(ip: str, networks=networks):
+        ip_net = to_network(ip)
+        if ip_net:
+            for network in networks:
+                if network.supernet_of(ip_net):
+                    return True
+        return False
+    return ip_filter
 
 def current_ip(ip_version):
     '''Returns the IP address (for a given version) of the interface where

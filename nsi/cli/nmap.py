@@ -191,7 +191,7 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
                 tuple,
             )),
         )
-        log.info(ip_dict)
+        #log.info(ip_dict)
     else:
         input_content = target or path_cb_or_stdin(
             input_path, from_clipboard

@@ -5,7 +5,10 @@ import logging
 
 from webdav.client import Client
 
-from .toolz import *
+from .toolz import (
+    pipe, map, filter, merge, maybe_float, parse_dt, concatv, maybe_pipe, first,
+    second, curry,
+)
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -93,7 +96,7 @@ class DavPath:
     def load_workbook(self):
         return load_workbook(self.client, self)
 
-    def upload_workbook(self, wb: 'Workbook'):
+    def upload_workbook(self, wb):
         return upload_workbook(self.client, wb, self)
 
     def load_binary(self):
@@ -156,7 +159,7 @@ def load_workbook(client: Client, path: DavPath):
 
 
 @curry
-def upload_workbook(client: Client, wb: 'Workbook', path: DavPath):
+def upload_workbook(client: Client, wb, path: DavPath):
     with tempfile.TemporaryDirectory() as tempdir:
         wb_path = Path(tempdir, 'wb.xlsx')
         wb.save(str(wb_path))
