@@ -20,7 +20,8 @@ def parse_json(path: Path):
         f'Loading JSON from: {path} size: {path.stat().st_size}'
     )
     return pipe(
-        path.read_text(),
+        path,
+        slurp,
         json_loads,
         info(
             '  .. done.'
@@ -73,8 +74,10 @@ def bloodhound_data(data: dict):
             o['type'] = key
 
     all_objects = (
-        data['computers'] + data['domains'] + 
-        data['groups'] + data['users']
+        data['computers'] + 
+        data['domains'] + 
+        data['groups'] + 
+        data['users']
     )
     return pipe(merge(
         data,
@@ -95,6 +98,7 @@ def bloodhound_data_from_paths(paths: T.List[Path]):
         if type in d:
             return d[type]
         return d['data']
+
     return pipe(
         merge(
             {'computers': [], 'domains': [], 'groups': [],

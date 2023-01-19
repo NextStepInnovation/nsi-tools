@@ -16,6 +16,9 @@ log = logging.new_log(__name__)
 ntlm_re = re.compile(
     r'(?P<ntlm>\w{32}:\w{32})', 
 )
+ntlm_all_re = re.compile(
+    r'(?P<user>\w+):(?P<sid>\d+):(?P<lm>\w{32}):(?P<nt>\w{32})', 
+)
 
 def parse_ntlm_from_lines(lines: T.Iterable[str]):
     return pipe(

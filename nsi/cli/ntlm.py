@@ -72,7 +72,7 @@ def resolve(hashes, potfile, admins, domain_admins, include_hashes, table,
         Path(potfile).read_text().splitlines(),
         map(lambda l: l.strip()),
         filter(ntlm_re.search),
-        map(lambda l: l.split(':')),
+        map(lambda l: l.split(':', 1)),
         dict
     )
 

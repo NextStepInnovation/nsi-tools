@@ -200,7 +200,7 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
         ip_list = pipe(
             input_content,
             lambda c: c.splitlines(),
-        _.strip_comments,
+            _.strip_comments,
             filter(None),
             mapcat(_.ip_to_seq),
             tuple,
