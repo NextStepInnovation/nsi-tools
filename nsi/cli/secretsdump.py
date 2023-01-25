@@ -6,6 +6,7 @@ import click
 
 from .. import logging
 from ..toolz import *
+from .. import yaml
 from .. import ntlm, secretsdump, logging, shell, parallel
 from . import common
 
@@ -17,7 +18,7 @@ log = new_log(__name__)
     '-o', '--output-dir', type=click.Path(
         resolve_path=True,
     ), default='.',
-    help=('Output file path (default: ".")'),
+    help=('Output directory path (default: ".")'),
 )
 @common.impacket_cred_options
 @common.ssh_options
@@ -41,7 +42,7 @@ def dump(ippath, target, sam_path, output_dir, username, password,
          domain, hashes, ssh, max_workers, echo, loglevel):
     logging.setup_logging(loglevel)
     
-    echo = echo or loglevel == 'debug'
+    echo = (echo or loglevel == 'debug')
 
     creds = []
 
@@ -67,8 +68,8 @@ def dump(ippath, target, sam_path, output_dir, username, password,
                 itertools.product(
                     ips, creds,
                 ),
-                vmap(lambda ip, d: merge(
-                    d, {'ip': ip}
+                vmap(lambda ip, cred: merge(
+                    cred, {'ip': ip}
                 )),
                 tuple,
             )
@@ -117,37 +118,131 @@ def dump(ippath, target, sam_path, output_dir, username, password,
         )),
         map(lambda s: f" - {s}"),
         '\n'.join,
-        lambda creds_str: log.info(
+        lambda creds_str: log.debug(
             f'Running with the following credential info:\n{creds_str}'
         ),
     )
 
-    output_path = Path(output_dir).expanduser()
-    output_path.mkdir(exist_ok=True, parents=True)
-    def output_content(cred: dict, output: str):
+    output_dir_path = Path(output_dir).expanduser()
+    output_dir_path.mkdir(exist_ok=True, parents=True)
+    def output_path(cred: dict):
         pw_hash = pipe(
             cred.get('password') or cred.get('hashes'),
             md5,
         )
         domain_str = f"-{cred['domain']}" if 'domain' in cred else ''
-        path = (
-            output_path / 
+        return (
+            output_dir_path / 
             f"secretsdump-{cred['ip']}{domain_str}-{cred['user']}-{pw_hash}.txt"
         )
-        path.write_text(output)
+
+    output_done_dir_path = output_dir_path / '.done'
+    output_done_dir_path.mkdir(exist_ok=True, parents=True)
+    def done_path(cred: dict):
+        return (
+            output_done_dir_path / output_path(cred).name
+        )
 
     getoutput = shell.getoutput(echo=echo)
     if ssh:
         getoutput = common.ssh_getoutput(ssh, echo=echo)
-        
 
     pmap = parallel.thread_map(max_workers=max_workers)
-    pipe(
+
+    creds_exist = pipe(
         creds,
-        pmap(lambda c: (c, secretsdump.secretsdump(**c))),
+        map(lambda c: (done_path(c).exists(), c)),
+        groupby(first),
+        valmap(map_t(second)),
+        cmerge({True: [], False: []}),
+    )
+    if creds_exist[True]:
+        log.info(
+            f'Skipping {len(creds_exist[True])} hosts'
+        )
+
+    def do_dump(cred: dict):
+        output = secretsdump.secretsdump(getoutput=getoutput, **cred)
+        return (
+            cred, output
+        )
+
+    def output_content(cred: dict, output: str):
+        path = output_path(cred)
+        bytes_written = path.write_text(output)
+        done_path(cred).write_text('')
+        return bytes_written
+
+    pipe(
+        creds_exist[False],
+        pmap(do_dump),
         vmap(output_content),
+        tuple,
+        lambda written: log.info(
+            f'{sum(written)} bytes in {len(written)} files written'
+        ),
+    )
+
+
+@click.command()
+@click.argument(
+    'secretsdump-files', nargs=-1,
+)
+@click.option(
+    '-o', '--output-path', type=click.Path(
+        resolve_path=True,
+    ), 
+    help=('Path to output data'),
+)
+@click.option(
+    '-f', '--format', type=click.Choice(
+        ['json', 'yaml']
+    ), default='json', show_default=True, help='''
+    Output format
+    ''', 
+)
+@click.option(
+    '--max-workers', type=int, default=5, show_default=True,
+    help=(
+        'Number of parallel worker threads'
+    ),
+)
+@click.option(
+    '--loglevel', default='info', show_default=True,
+    help=('Log output level'),
+)
+def parse(secretsdump_files, output_path, format, max_workers, loglevel):
+    logging.setup_logging(loglevel)
+
+    dump_paths = pipe(
+        secretsdump_files,
+        map(Path),
+        tuple,
+    )
+    
+    log.info(
+        f'Parsing {len(dump_paths)} secretsdump files...'
+    )
+
+    match format:
+        case 'json':
+            fomatter = json_dumps
+        case 'yaml':
+            formatter = yaml.dump
+
+    outputter = print
+    if output_path:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        outputter = output_path.write_text
+
+    pmap = parallel.thread_map(max_workers=max_workers)
+
+    dumps = pipe(
+        dump_paths,
+        pmap(secretsdump.parse_dump),
+        map(outputter),
         tuple,
     )
 
-if __name__ == '__main__':
-    dump()
+

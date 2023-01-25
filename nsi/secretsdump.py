@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 from ipaddress import IPv4Address
 import logging
+import re
+from pathlib import Path
 import typing as T
 
 from . import shell
 from .toolz import *
 from . import logging
+from . import ntlm
 
 log = logging.new_log(__name__)
 
@@ -39,4 +42,194 @@ def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None,
 
     return getoutput(command)
     
+sam_start_re = re.compile(
+    r'\[\*\] Dumping local SAM hashes \(uid:rid:lmhash:nthash\)'
+)
 
+cached_start_re = re.compile(
+    r'\[\*\] Dumping cached domain logon information \(domain/username:hash\)'
+)
+
+lsa_start_re = re.compile(
+    r'\[\*\] Dumping LSA Secrets'
+)
+
+domain_start_re = re.compile(
+    r'\[\*\] Dumping Domain Credentials \(domain\\uid:rid:lmhash:nthash\)'
+)
+
+end_re = re.compile(
+    r'\[\*\] Cleaning up\.\.\.'
+)
+
+@curry
+def split_by_regex(regexes: T.Tuple[str|re.Pattern], content: str):
+    regexes = pipe(
+        regexes, 
+        map(to_regex), 
+        tuple,
+    )
+
+def dump_parts(content: str):
+    class matches:
+        sam = sam_start_re.search(content)
+        cached = cached_start_re.search(content)
+        lsa = lsa_start_re.search(content)
+        domain = domain_start_re.search(content)
+        end = end_re.search(content)
+
+    parts = {
+        'sam': '',
+        'cached': '',
+        'lsa': '',
+        'domain': '',
+    }
+    if matches.sam and matches.cached:
+        parts['sam'] = content[
+            matches.sam.end(): matches.cached.start()
+        ].strip()
+
+    if matches.cached and matches.lsa:
+        parts['cached'] = content[
+            matches.cached.end(): matches.lsa.start()
+        ].strip()
+
+    if matches.lsa and matches.domain:
+        parts['lsa'] = content[
+            matches.lsa.end(): matches.domain.start()
+        ].strip()
+    elif matches.lsa and matches.end:
+        parts['lsa'] = content[
+            matches.lsa.end(): matches.end.start()
+        ].strip()
+
+    if matches.domain and matches.end:
+        parts['domain'] = content[
+            matches.domain.end(): matches.end.start()
+        ].strip()
+
+    return parts
+
+secret_header_re = re.compile(
+    r'\[\*\]\s+(?P<name>\S+)'
+)
+def get_secrets(content: str):
+    return pipe(
+        secret_header_re.split(content)[1:],
+        partition(2),
+        dict,
+        valmap(strip()),
+    )
+
+
+account_re = re.compile(
+    r'(?:(?P<domain>\S+?)[\\/])?(?P<user>\S+)'
+)
+
+def parse_account(content: str):
+    if ':' in content:
+        content = content.split(':')[0]
+    account = groupdict(account_re, content)
+    fus = account['user']
+    fubs = account['user']
+    if account['domain']:
+        fus = account["domain"] + "/" + fus
+        fubs = account["domain"] + "\\" + fubs
+    return merge(
+        account, {
+            'full_user_slash': fus,
+            'full_user_bslash': fubs,
+        }
+    )
+
+password_re = re.compile(
+    r'(?:(?P<domain>\S+?)[\\/])?(?P<user>\S+)(?::(?P<pw>.*))'
+)
+def is_password(content: str):
+    return (
+        len(content.splitlines()) == 1 and 
+        password_re.search(content)
+    )
+
+def parse_password(content: str):
+    pw_dict = groupdict(password_re, content)
+    return merge(
+        parse_account(content), pw_dict, 
+    )
+
+@ensure_paths
+def parse_dump(path: Path):
+    content = to_str(path.read_bytes())
+    parts = dump_parts(content)
+
+    secrets = get_secrets(parts['lsa'])
+    pw_secrets = pipe(
+        secrets,
+        valfilter(is_password),
+        valmap(parse_password),
+    )
+
+    local_users = pipe(
+        parts['sam'],
+        finditerd(ntlm.ntlm_all_re),
+        tuple,
+    )
+
+    domain_accounts = pipe(
+        parts['domain'],
+        finditerd(ntlm.ntlm_all_re),
+    )
+    domain_users = pipe(
+        domain_accounts,
+        filter(lambda d: not d['user'].endswith('$')),
+        tuple,
+    )
+    domain_machines = pipe(
+        domain_accounts,
+        filter(lambda d: d['user'].endswith('$')),
+        tuple,
+    )
+
+    machine = {}
+    machine_str = secrets.get('$MACHINE.ACC', '')
+
+    def add_account(account: str, machine=machine):
+        account = parse_account(account)
+        if 'account' in machine:
+            if machine['account'] != account:
+                log.error(
+                    f'Got a different account in the $MACHINE.ACC '
+                    f'secret: {account}'
+                )
+        else:
+            machine['account'] = account
+
+    if machine_str:
+        for line in machine_str.splitlines():
+            match line.split(':'):
+                case [account, lm, nt, '', '', '']:
+                    add_account(account)
+                    machine['ntlm'] = f'{lm}:{nt}'
+                    machine['nt'] = nt
+                case [account, key, value]:
+                    add_account(account)
+                    machine[key] = value
+
+    dcc2 = pipe(
+        parts['cached'],
+        finditerd(ntlm.dcc2_re),
+        tuple,
+    )
+
+    return {
+        'ip': ntlm.get_ip(path),
+        'local': local_users,
+        'domain': {
+            'users': domain_users,
+            'machines': domain_machines,
+        },
+        'machine': machine,
+        'dcc2': dcc2,
+        'secrets': secrets,
+        'passwords': pw_secrets,
+    }
