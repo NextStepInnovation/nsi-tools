@@ -35,6 +35,11 @@ directories.
     Minimum file modification time (mtime) to look for
     ''',
 )
+@click.option(
+    '--sub-dir', is_flag=True, help='''
+    Get metadata for all sub-directories of the given directories
+    '''
+)
 @common.ssh_options
 @click.option(
     '--echo', is_flag=True,
@@ -72,10 +77,11 @@ directories.
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
-def metadata(directories, min_mtime, output_dir, ssh, echo, dry_run, skip_dir, 
+def metadata(directories, min_mtime, sub_dir, output_dir, ssh, echo, dry_run, skip_dir, 
              max_examples, case_sensitive, keep_empty, loglevel):
     logging.setup_logging(loglevel)
     log.debug(directories)
+
     output_dir_path = Path(output_dir)
     done_dir_path = Path(output_dir_path) / '.nsi-meta'
     if not output_dir_path.exists():
@@ -91,9 +97,11 @@ def metadata(directories, min_mtime, output_dir, ssh, echo, dry_run, skip_dir,
     directories = pipe(
         directories, 
         map(Path), 
+        mapcat(lambda p: ([s for s in p.glob('*') if s.is_dir()]) if sub_dir else [p]),
         # filter(lambda p: not done_path(p).exists()),
         tuple,
     )
+
 
     getoutput = shell.getoutput(echo=echo, dry_run=dry_run)
     if ssh:
@@ -131,6 +139,12 @@ def metadata(directories, min_mtime, output_dir, ssh, echo, dry_run, skip_dir,
                 f'YAML output found {path}... skipping'
             )
             return None
+        if meta_path.stat().st_size == 0:
+            log.warning(
+                f'Directory {meta_path} has zero size... skipping'
+            )
+            return None
+
         return pipe(
             filesystem.directory_metadata(
                 meta_path, min_mtime=min_mtime, skip_dirs=skip_dir,

@@ -5,6 +5,7 @@ from collections import defaultdict, OrderedDict
 from datetime import datetime, date
 import typing as T
 import builtins
+import random
 import math
 
 from . import shell, logging
@@ -226,6 +227,9 @@ def directory_metadata(root: Path, *, min_mtime: date = None,
             
         if len(ext_d[suffix(path)]['examples']) < max_examples:
             ext_d[suffix(path)]['examples'].append(path)
+        else:
+            if random.random() < 0.1:
+                ext_d[suffix(path)]['examples'][random.randrange(max_examples)] = path
         ext_d[suffix(path)]['total'] += 1
 
         meta['totals']['files'] += 1
