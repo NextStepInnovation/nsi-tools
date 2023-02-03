@@ -162,7 +162,10 @@ def dump(ippath, target, sam_path, output_dir, username, password,
         )
 
     def do_dump(cred: dict):
-        output = secretsdump.secretsdump(getoutput=getoutput, **cred)
+        path = output_path(cred)
+        output = secretsdump.secretsdump(getoutput=getoutput, **merge(
+            cred, {'outputfile': str(path.parent / path.stem)}
+        ))
         return (
             cred, output
         )
