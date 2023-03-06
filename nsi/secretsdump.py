@@ -15,6 +15,7 @@ log = logging.new_log(__name__)
 @curry
 def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None, 
                 password=None, domain=None, *, 
+                proxychains: bool = False,
                 secretsdump_exec='impacket-secretsdump',
                 getoutput=shell.getoutput, **secretsdump_options):
 
@@ -33,9 +34,10 @@ def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None,
     )
 
     command = (
-        f"{secretsdump_exec} -hashes {hashes} {options} '{user}@{ip}'"
-        if hashes else
-        f"{secretsdump_exec} {options} '{user}':'{password}'@'{ip}'"
+        ('proxychains ' if proxychains else '') + 
+        (f"{secretsdump_exec} -hashes {hashes} {options} '{user}@{ip}'"
+         if hashes else
+         f"{secretsdump_exec} {options} '{user}':'{password}'@'{ip}'")
     )
 
     log.info(f'secretsdump command: {command}')

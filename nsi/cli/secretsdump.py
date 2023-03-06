@@ -35,11 +35,17 @@ log = new_log(__name__)
     ),
 )
 @click.option(
+    '--proxychains', is_flag=True,
+    help='''
+    Use proxychains for the secretsdump command
+    ''',
+)
+@click.option(
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
 def dump(ippath, target, sam_path, output_dir, username, password, 
-         domain, hashes, ssh, max_workers, echo, loglevel):
+         domain, hashes, ssh, max_workers, echo, proxychains, loglevel):
     logging.setup_logging(loglevel)
     
     echo = (echo or loglevel == 'debug')
@@ -90,14 +96,17 @@ def dump(ippath, target, sam_path, output_dir, username, password,
                 tuple,
             )
 
-    if ips and username and password:
+    if ips and username and (password or proxychains):
         creds = pipe(
             itertools.product(ips, (username,), (password,)),
-            vmap(lambda ip, u, p: merge({
-                'user': u,
-                'password': p,
-                'ip': ip,
-            }, {'domain': domain} if domain else {})),
+            vmap(lambda ip, u, p: merge(
+                {
+                    'user': u,
+                    'ip': ip,
+                }, 
+                {'domain': domain} if domain else {},
+                {'password': p} if not proxychains else {},
+            )),
             cconcat(creds),
             tuple,
         )
@@ -127,7 +136,7 @@ def dump(ippath, target, sam_path, output_dir, username, password,
     output_dir_path.mkdir(exist_ok=True, parents=True)
     def output_path(cred: dict):
         pw_hash = pipe(
-            cred.get('password') or cred.get('hashes'),
+            cred.get('password') or cred.get('hashes') or '',
             md5,
         )
         domain_str = f"-{cred['domain']}" if 'domain' in cred else ''
@@ -165,7 +174,7 @@ def dump(ippath, target, sam_path, output_dir, username, password,
         path = output_path(cred)
         output = secretsdump.secretsdump(getoutput=getoutput, **merge(
             cred, {'outputfile': str(path.parent / path.stem)}
-        ))
+        ), proxychains=proxychains)
         return (
             cred, output
         )
