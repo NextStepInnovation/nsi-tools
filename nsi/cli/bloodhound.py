@@ -135,10 +135,16 @@ list_groups = bh_list_command('groups')
     ),
 )
 @click.option(
+    '-e', '--enabled', is_flag=True,
+    help = '''
+    List only enabled objects
+    '''
+)
+@click.option(
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
-def group_members(group_regex, inpath, table, recurse, loglevel):
+def group_members(group_regex, inpath, table, recurse, enabled, loglevel):
     logging.setup_logging(loglevel)
 
     inpath = Path(inpath).expanduser()
@@ -167,6 +173,7 @@ def group_members(group_regex, inpath, table, recurse, loglevel):
         filter(second),
         vmap(lambda g, nodes: pipe(
             nodes,
+            filter(is_enabled if enabled else (lambda *a: True)),
             sort_by(lambda n: (n['type'], get_name(n))),
             map(formatter(g)),
             '\n'.join,
