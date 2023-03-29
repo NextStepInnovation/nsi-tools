@@ -1,18 +1,12 @@
 '''Tools for dealing with nmap output
 '''
-import sys
 import re
 from pathlib import Path
 import logging
-import pprint
-import ipaddress
 import json
-import subprocess
-import textwrap
 import typing as T
 
 import click
-import pyperclip
 
 from .. import toolz as _
 from ..toolz import (

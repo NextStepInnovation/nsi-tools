@@ -236,6 +236,9 @@ def report_stats(xml_paths, output_path):
         map(lambda p: (str(p), nexpose.xml.stats.node_stats(p))),
         dict,
         yaml.write_yaml(output_path),
+        do(lambda success: log.info(
+            f'Wrote {file_size(output_path)} bytes to {output_path}'
+        ))
     )
 
 

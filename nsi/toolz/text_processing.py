@@ -11,7 +11,8 @@ from .common import (
 
 __all__ = [
     # text_processing
-    'clipboard_copy', 'clipboard_paste', 'difflines', 'escape_row', 'intlines',
+    'clipboard_copy', 'clipboard_paste', 'copy', 'paste',
+    'difflines', 'escape_row', 'intlines',
     'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi', 'clip_text',
     'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
     'columns_as_code', 'markdown_row',
@@ -58,9 +59,11 @@ remove_comments = strip_comments
 
 def clipboard_copy(content: str):
     pyperclip.copy(content)
+copy = clipboard_copy
 
 def clipboard_paste():
     return pyperclip.paste()
+paste = clipboard_paste
 
 def xlsx_to_clipboard(content: str):
     return pipe(

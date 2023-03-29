@@ -64,6 +64,7 @@ setup(
         'requests',
         'requests[socks]',
         'ruamel.yaml',
+        'scapy',
         'sqlalchemy',
         'toolz',
         'webdav',
@@ -82,7 +83,7 @@ setup(
     url='https://github.com/NextStepInnovation/nsi-tools',
 
     author="David O'Gwynn",
-    author_email='dogwynn@lowlandresearch.com',
+    author_email='david_ogwynn@nextstepinnovation.com',
 
     license='MIT',
 

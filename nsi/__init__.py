@@ -28,5 +28,6 @@ from . import (
     grep,
     masscan,
     ldap,
+    pcap,
 )
 __version__ = '0.0.1'

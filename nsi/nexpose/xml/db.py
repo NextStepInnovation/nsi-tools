@@ -1116,7 +1116,7 @@ def ingest_report(xml_path: Path) -> Session:
     if db_path.exists():
         if newer(db_path, xml_path):
             log.info(
-                f'SQLite3 database already exists: {db_path.resolve()}'
+                f'SQLite3 database already exists and is newer than XML: {db_path.resolve()}'
             )
             return get_session(xml_path)
         else:

@@ -75,6 +75,24 @@ def wait_for_report(api: Api, report_id: ReportNexposeId, instance_id: int,
                     log_obj(log.error, unhandled)
     return False
 
+
+'''
+Policy SQL Query Report
+
+https://discuss.rapid7.com/t/sql-query-to-export-policy-scan-results-with-remediation-rationale-and-proof/1173
+
+SELECT
+  dp.policy_id, dp.title as policy_title, dpr.rule_id, dpr.title as policy_rule_title,
+  dp.benchmark_name, da.ip_address, da.host_name, dpr.description, dp.category,
+  fapr.date_tested, htmlToText(fapr.proof) as proof, fapr.compliance,
+  dpr.severity, htmlToText(dpr.rationale) as rationale, htmlToText(dpr.remediation) as remediation
+FROM fact_asset_policy_rule fapr
+  JOIN dim_policy dp on dp.policy_id = fapr.policy_id
+  JOIN dim_policy_rule dpr on dpr.policy_id = fapr.policy_id and fapr.rule_id = dpr.rule_id
+  JOIN dim_asset da on da.asset_id = fapr.asset_id
+WHERE fapr.compliance = false order by dp.title, dpr.title 
+'''
+
 def new_report_body(api: Api, name: str, site_ids: SiteList,
                     asset_ids: AssetList, scan_ids: ScanList):
     return {
