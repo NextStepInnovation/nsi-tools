@@ -66,6 +66,7 @@ setup(
         'ruamel.yaml',
         'scapy',
         'sqlalchemy',
+        'strip-ansi',
         'toolz',
         'webdav',
         'xmljson',

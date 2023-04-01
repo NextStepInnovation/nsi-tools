@@ -9,6 +9,7 @@ from ipaddress import (
     ip_address, ip_interface, ip_network, IPv4Address, IPv6Address,
     IPv4Network, IPv6Network,
 )
+IpNetwork = IPv4Network | IPv6Network
 
 import ifcfg
 
@@ -93,7 +94,7 @@ def to_ip_obj(ip: str) -> None|IpObject:
         f'Could not translate {repr(ip)} into an IP object'
     )
 
-def to_network(ip_data: str) -> None | IPv4Network | IPv6Network:
+def to_network(ip_data: str) -> T.Optional[IpNetwork]:
     ip_obj = to_ip_obj(ip_data)
     if ip_obj:
         return ip_network(ip_obj)
@@ -107,19 +108,22 @@ def get_ip_filter(ips: T.Sequence[str]) -> T.Callable[[str], bool]:
     designations, or IP subnets, return a filter function that will determine if
     a given IP string belongs to that set of things.
     '''
-    networks: T.Sequence[IPv4Network|IPv6Network] = pipe(
+    networks: T.Sequence[IpNetwork] = pipe(
         ips,
         map(to_network),
         tuple,
-    )
+    ) # type: ignore
     def ip_filter(ip: str, networks=networks):
         ip_net = to_network(ip)
         if ip_net:
             for network in networks:
-                if network.supernet_of(ip_net):
+                if network.supernet_of(ip_net): # type: ignore
                     return True
         return False
     return ip_filter
+
+def default_interface() -> dict:
+    return ifcfg.get_parser().default_interface # type: ignore
 
 def current_ip(ip_version):
     '''Returns the IP address (for a given version) of the interface where
@@ -130,7 +134,8 @@ def current_ip(ip_version):
         'v4': 'inet',
         'v6': 'inet6',
     }
-    default = ifcfg.get_parser().default_interface
+
+    default = default_interface()
     ip = default.get(ip_key[ip_version])
     netmask = default.get('netmask')
     if ip and netmask:
@@ -183,7 +188,7 @@ def is_network(inet):
     except ValueError:
         return False
 
-def get_slash(inet: Union[str, ip_network]):
+def get_slash(inet: str | IpNetwork):
     return 32 - int(math.log2(ip_network(inet).num_addresses))
 
 def get_slash_from_mask(mask: str):
@@ -204,13 +209,29 @@ def is_ip_range(ip_range):
                 return True
     return False
 
-def ip_to_seq(ip):
+@curry
+def ip_to_seq(ip, expand_network: bool=True) -> T.Sequence[str]:
+    '''Convert IP expression to a sequence of IPs
+
+    Args:
+    
+    - expand_network (bool): expand network/interface expressions to individual
+      IPs
+    '''
     if is_ip(ip):
         return [ip]
     elif is_network(ip):
-        return pipe(ip_network(ip).hosts(), map(str), tuple)
+        if not expand_network:
+            return [str(ip)]
+        return pipe(ip_network(ip).hosts(), map(str), tuple) # type: ignore
     elif is_interface(ip):
-        return pipe(ip_interface(ip).network.hosts(), map(str), tuple)
+        if not expand_network:
+            return [str(ip_interface(ip).network)]
+        return pipe(
+            ip_interface(ip).network.hosts(), 
+            map(str), 
+            tuple,
+        ) # type: ignore
     elif is_comma_sep_ip(ip):
         return ip.split(',')
     elif is_ip_range(ip):

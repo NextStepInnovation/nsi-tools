@@ -237,8 +237,13 @@ def shell(command, **kw):
     return status, '\n'.join(lines)
 
 @curry
+def getstatusoutput(command, **kw):
+    return shell(command, **kw)
+    
+
+@curry
 def getoutput(command, **kw):
-    status, content = shell(command, **kw)
+    status, content = getstatusoutput(command, **kw)
     return content
 
 

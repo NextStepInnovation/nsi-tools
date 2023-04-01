@@ -29,5 +29,6 @@ from . import (
     masscan,
     ldap,
     pcap,
+    cme,
 )
 __version__ = '0.0.1'

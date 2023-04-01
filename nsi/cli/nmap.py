@@ -100,7 +100,6 @@ def diff_ports(patha, pathb, clipboard):
     help='''
     Given some set of IPs/subnets run nmap on those devices
     '''
-
 )
 @click.option(
     '-i', '--input-path', type=click.Path(dir_okay=False, exists=True),
@@ -242,10 +241,12 @@ def nmap_hosts(input_path, target, ports, top_ports, no_dns, aggressive,
 
 def get_services(path):
     log.info(f'Loading YAML path: {path}')
-    data = yaml.read_yaml(path)
-    ports = data.get('host', {}).get('ports', {}).get('port', [])
-    if is_dict(ports):
-        ports = [ports]
+    data: dict = yaml.read_yaml(path) # type: ignore
+    ports_raw = data.get('host', {}).get('ports', {}).get('port', [])
+    if is_dict(ports_raw):
+        ports: T.Sequence[dict] = [dict(ports_raw)]
+    else:
+        ports: T.Sequence[dict] = ports_raw
     for port in ports:
         port_number  = port.get('portid')
         service = port.get('service', {})
@@ -377,7 +378,7 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
         log.info(col_formats)
         def visual_row(row):
             return [
-                f.format(v) for f, v in zip(col_formats, row)
+                f.format(v) for f, v in zip(col_formats, row) # type: ignore
             ]
 
         return pipe(
@@ -385,7 +386,7 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
             map(visual_row),
             map(' '.join),
             '\n'.join,
-        )
+        ) # type: ignore
 
 
     def tsv_table(rows: T.Iterable[T.Sequence[str]]) -> str:
@@ -393,7 +394,7 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
             rows,
             map('\t'.join),
             '\n'.join,
-        )
+        ) # type: ignore
 
     pipe(
         rows,
