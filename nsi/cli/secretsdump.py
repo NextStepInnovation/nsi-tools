@@ -96,26 +96,29 @@ def dump(ippath, target, sam_path, output_dir, username, password,
                 tuple,
             )
 
-    if ips and username and (password or proxychains):
+    if ips and username and (password or hashes or proxychains):
         creds = pipe(
-            itertools.product(ips, (username,), (password,)),
-            vmap(lambda ip, u, p: merge(
+            itertools.product(ips, (username,), (password,), (hashes,)),
+            vmap(lambda ip, u, p, h: merge(
                 {
                     'user': u,
                     'ip': ip,
                 }, 
                 {'domain': domain} if domain else {},
-                {'password': p} if not proxychains else {},
+                {'password': p} if (p and not proxychains) else {},
+                {'hashes': h} if (h and not proxychains) else {},
             )),
             cconcat(creds),
             tuple,
         )
 
+    # pprint.pprint(creds)
+    # return
     if not creds:
         raise click.UsageError(
             'No valid credential information given, provide'
             ' -i/--ippath -t/--target -s/--sam-path and, if necessary,'
-            ' -u/--username -p/--password -d/--domain'
+            ' -u/--username (-p/--password or -h/--hashes) -d/--domain'
         )
 
     pipe(
