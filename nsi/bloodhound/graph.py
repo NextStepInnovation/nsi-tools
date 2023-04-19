@@ -340,10 +340,19 @@ def job_from_ou(user: dict):
 def job_from_description(user: dict):
     return user['props']['description']
 
-def sort_by_account(nodes):
+NodeList = T.Sequence[T.Tuple[int, dict]]
+@curry
+def sort_by_account(graph: nx.DiGraph, nodes: NodeList, **sort_kw):
     return pipe(
         nodes,
-        sort_by(vcall(lambda i, n: n['label'])),
+        sort_by(vcall(lambda i, n: n['label']), **sort_kw),
+    )
+
+@curry
+def sort_by_out_degree(graph: nx.DiGraph, nodes: NodeList, **sort_kw):
+    return pipe(
+        nodes,
+        sort_by(vcall(lambda i, n: graph.out_degree(i)), **sort_kw),
     )
 
 @curry    
@@ -356,7 +365,7 @@ def user_computer_perm_data(graph: nx.DiGraph, user_job_f=job_from_ou,
     ]
     return pipe(
         graph.nodes(data=True),
-        node_sort_f,
+        node_sort_f(graph),
         vfilter(lambda i, n: n['type'] == 'User'),
         vmapcat(lambda i, u: [
             {
@@ -364,7 +373,9 @@ def user_computer_perm_data(graph: nx.DiGraph, user_job_f=job_from_ou,
                 'job': user_job_f(u),
                 'account': f"`{u['label'].split('@')[0]}`",
                 'perm': edge['label'],
-                'host': edge['target']['label'],
+                'host': f"`{edge['target']['label']}`",
+                'out-degree': graph.out_degree(i),
+                'in-degree': graph.in_degree(i),
             } for edge in edges(u)
         ]),
         tuple,
@@ -372,9 +383,10 @@ def user_computer_perm_data(graph: nx.DiGraph, user_job_f=job_from_ou,
 
 @curry
 def user_computer_perm_table(graph: nx.DiGraph, user_job_f=job_from_ou, 
-                             node_sort_f=sort_by_account):
-    cols = ['name', 'job', 'account', 'perm', 'host']
-    mapped = ['User Name','Job/Role', 'Account', 'Permission', 'Host']
+                             node_sort_f=sort_by_account, 
+                             cols=('name', 'job', 'account', 'perm', 'host'),
+                             mapped=('User Name','Job/Role', 'Account', 
+                                     'Permission', 'Host')):
     return pipe(
         user_computer_perm_data(
             graph, user_job_f=user_job_f, node_sort_f=node_sort_f,
@@ -389,7 +401,7 @@ def user_data(graph: nx.DiGraph, user_job_f=job_from_ou,
                node_sort_f=sort_by_account):
     return pipe(
         graph.nodes(data=True),
-        node_sort_f,
+        node_sort_f(graph),
         vfilter(lambda i, n: n['type'] == 'User'),
         vmapcat(lambda i, u: [
             {
@@ -412,3 +424,27 @@ def user_table(graph: nx.DiGraph, user_job_f=job_from_ou,
             cols, dict(zip(cols, mapped))
         ),
     )
+
+#----------------------------------
+# Cypher
+#----------------------------------
+
+bp = '''\
+WITH[{nodes}] as nodelist\
+ MATCH p=(m:User )-[:AdminTo]->(n:Computer)\
+ WHERE m.name in nodelist \
+  OR n.name in nodelist\
+ RETURN p
+'''
+
+#----------------------------------
+# Connected components
+#----------------------------------
+
+def cypher_of_nodes(names: T.Sequence[str]) -> str:
+    return bp.format(nodes=pipe(
+        names,
+        map(lambda n: f'"{n}"'),
+        ', '.join
+    ))
+
