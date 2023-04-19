@@ -71,7 +71,8 @@ def markdown(content: str, *, extensions: T.Sequence[str] = None,
     return output
 
 def make_table(columns=None, col_map=None, 
-               columns_as_code: T.Sequence[int|str] = None):
+               columns_as_code: T.Sequence[int|str] = None, 
+               pad: bool = False):
     '''Functional markdown table maker. Given columns (i.e. row dict keys) and
     map from those keys to final header names, return table-making function that
     takes an iterable of rows and produces a markdown table.
@@ -102,15 +103,35 @@ def make_table(columns=None, col_map=None,
             header = [col_map[c] for c in columns]
 
         if is_seq(rows[0]):
-            value_f = lambda r: [r[i] for i, _c in enumerate(columns)]
+            value_f = lambda _i, r: [r[i] for i, _c in enumerate(columns)]
         else:
-            value_f = lambda r: [r[c] for c in columns]
+            value_f = lambda _i, r: [r[c] for c in columns]
+
+        if pad:
+            max_col_widths = [0 for v in header]
+            for row in [header] + [r for r in rows]:
+                for j, value in enumerate(row):
+                    width = len(str(value))
+                    if width > max_col_widths[j]:
+                        max_col_widths[j] = width
+
+            header = [str(h).center(max_col_widths[j]) for j, h in enumerate(header)]
+            old_value_f = value_f
+            value_f = lambda i, row: [
+                str(v).ljust(max_col_widths[j]) 
+                for j, v in enumerate(old_value_f(i, row))
+            ]
             
         yield '| ' + ' | '.join(header) + ' |'
-        yield '|:--'*len(header) + '|'
-        for row in rows:
+        yield '|:' + pipe(
+            header,
+            map(lambda h: '-'*(len(h) + 1)),
+            '|:'.join,
+        )+ '|'
+        # yield '|:--'*len(header) + '|'
+        for i, row in enumerate(rows):
             try:
-                values = value_f(row)
+                values = value_f(i, row)
             except:
                 log.exception(row)
                 raise
