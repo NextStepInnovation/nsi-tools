@@ -28,7 +28,9 @@ def parse_json(path: Path):
         )
     )
 
-def get_name(node: dict):
+def get_name(node: T.Optional[dict]):
+    if node is None:
+        return 'NULL_OBJECT'
     match node:
         case {'Name': name}:
             return name
@@ -139,6 +141,7 @@ get_computer_names = compose_left(
     get_names,
 )
 
+
 @memoize
 @ensure_paths
 def primary_groups(path: Path):
@@ -148,7 +151,7 @@ def primary_groups(path: Path):
         filter(lambda n: n.get('PrimaryGroupSID')),
         map(lambda n: (
             pipe(
-                data['by_id'][n['PrimaryGroupSID']],
+                data['by_id'].get(n['PrimaryGroupSID']),
                 get_name,
             ), n
         )),
