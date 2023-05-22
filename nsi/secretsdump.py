@@ -125,15 +125,19 @@ def get_secrets(content: str):
 
 
 account_re = re.compile(
-    r'(?:(?P<domain>\S+?)[\\/])?(?P<user>\S+)'
+    r'(?:(?P<slash_domain>\S+?)[\\/])?'
+    r'(?P<user>[A-Za-z0-9\.\_\- \(\)]+)'
+    r'(?:@(?P<at_domain>\S+))?'
 )
 
 def parse_account(content: str):
     if ':' in content:
         content = content.split(':')[0]
-    account = groupdict(account_re, content)
+    account:dict = groupdict(account_re, content)
     fus = account['user']
     fubs = account['user']
+    sd, ad = account.pop('slash_domain'), account.pop('at_domain')
+    account['domain'] = sd or ad
     if account['domain']:
         fus = account["domain"] + "/" + fus
         fubs = account["domain"] + "\\" + fubs
@@ -145,22 +149,88 @@ def parse_account(content: str):
     )
 
 password_re = re.compile(
-    r'(?:(?P<domain>\S+?)[\\/])?(?P<user>\S+)(?::(?P<pw>.*))'
+    r'(?:(?P<slash_domain>\S+?)[\\/])?'
+    r'(?P<user>[A-Za-z0-9\.\_\- \(\)]+)'
+    r'(?:@(?P<at_domain>\S+))?'
+    r'(?::(?P<pw>.*))'
 )
 def is_password(content: str):
     return (
-        len(content.splitlines()) == 1 and 
-        password_re.search(content)
+        len(content.splitlines()) == 1 and password_re.search(content)
     )
 
 def parse_password(content: str):
-    pw_dict = groupdict(password_re, content)
+    pw_dict = pipe(
+        groupdict(password_re, content), 
+        cdissoc('slash_domain'),
+        cdissoc('at_domain'),
+    )
+    print(pw_dict)
+    print(content)
     return merge(
         parse_account(content), pw_dict, 
     )
 
+class NtlmCreds(T.TypedDict):
+    domain: str | None
+    user: str
+    sid: str
+    lm: str
+    nt: str
+
+class Dcc2Hash(T.TypedDict):
+    domain: str
+    user: str
+    dcc2: str
+
+class Account(T.TypedDict):
+    user: str
+    domain: str
+    full_user_slash: str
+    full_user_bslash: str
+    pw: str
+
+class DomainAccounts(T.TypedDict):
+    users: T.Sequence[NtlmCreds]
+    machines: T.Sequence[NtlmCreds]
+
+class MachineInfo(T.TypedDict):
+    account: Account
+    plain_password_hex: str
+    ntlm: str
+    nt: str
+
+class SecretsDump(T.TypedDict):
+    ip: str
+    local: T.Sequence[NtlmCreds]
+    domain: DomainAccounts
+    machine: MachineInfo
+    dcc2: T.Sequence[Dcc2Hash]
+    secrets: T.Dict[str, str]
+    passwords: T.Sequence[Account]
+
+def parse_sam_content(content: str) -> SecretsDump:
+    return {
+        'local': pipe(
+            content,
+            finditerd(ntlm.ntlm_all_re),
+            tuple,
+        ),
+    }
+
 @ensure_paths
-def parse_dump(path: Path):
+def parse_sam_file(path: Path) -> SecretsDump:
+    return pipe(
+        path, 
+        slurp,
+        parse_sam_content,
+        cmerge({
+            'ip': ntlm.get_ip(path),
+        }),
+    )
+
+@ensure_paths
+def parse_txt_file(path: Path) -> SecretsDump:
     content = to_str(path.read_bytes())
     parts = dump_parts(content)
 
@@ -235,3 +305,12 @@ def parse_dump(path: Path):
         'secrets': secrets,
         'passwords': pw_secrets,
     }
+
+@ensure_paths
+def parse_dump(path: Path) -> SecretsDump:
+    match path:
+        case Path(suffix='.txt'):
+            return parse_txt_file(path)
+        case Path(suffix='.sam'):
+            return parse_sam_file(path)
+

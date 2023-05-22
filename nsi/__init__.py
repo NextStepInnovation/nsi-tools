@@ -30,5 +30,6 @@ from . import (
     ldap,
     pcap,
     cme,
+    burp,
 )
 __version__ = '0.0.1'

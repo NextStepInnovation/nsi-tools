@@ -1,5 +1,6 @@
 import typing as T
 from typing import Union, Iterable
+import functools
 import re
 
 import pyperclip
@@ -13,9 +14,9 @@ __all__ = [
     # text_processing
     'clipboard_copy', 'clipboard_paste', 'copy', 'paste',
     'difflines', 'escape_row', 'intlines',
-    'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi', 'clip_text',
+    'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi', 'clip_text', 'clip_lines',
     'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
-    'columns_as_code', 'markdown_row',
+    'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 'table_lines',
 ]
 
 # ----------------------------------------------------------------------
@@ -172,6 +173,22 @@ def clip_text(length, text, buf=' [...] ') -> str:
     return text
 
 @curry
+def clip_lines(length: int, sequence: T.Sequence[str], *, 
+               buffer_text:str = None,
+               buffer_pad:str = None) -> T.Sequence[str]:
+    sequence = tuple(sequence)
+    if len(sequence) > length:
+        if length % 2 == 0:
+            l, r = (length // 2, length // 2)
+        else:
+            l, r = (length // 2, (length // 2 + 1))
+        text = buffer_text or f'[{(len(sequence) - r)-l} items removed]'
+        pad = buffer_pad or ''
+        buffer_str = pad + text + pad
+        return sequence[:l] + (buffer_str,) + sequence[-r:]
+    return sequence
+
+@curry
 def columns_as_code(columns_as_code: T.Sequence[int|str], 
                     row: T.Dict[str, T.Any] | T.Sequence[T.Any]):
     columns = set(columns_as_code)
@@ -186,7 +203,6 @@ def columns_as_code(columns_as_code: T.Sequence[int|str],
         for i, v in enumerate(row)
     )
 
-@curry
 def markdown_row(row: T.Sequence[T.Any]):
     return (
         '| ' + pipe(
@@ -195,3 +211,34 @@ def markdown_row(row: T.Sequence[T.Any]):
             ' | '.join,
         ) + ' |'
     )
+
+def code_if(s: str):
+    '''
+    Return the string enclosed in backticks (markdown "code" symbol) only if it
+    exists, otherwise empty string
+    '''
+    return f'`{s}`' if s else ''
+
+def join_lines(sep: str, pre: str = None, post: str = None):
+    '''
+    Decorator that converts generators that yield lines of text into a function
+    that returns a string where the lines are prefixed by `pre`, joined by
+    `sep`, and `post` is added to the end of the final string.
+    '''
+    def wrapper(func):
+        @functools.wraps(func)
+        def joiner(*a, **kw):
+            return (pre if pre else '') + pipe(
+                func(*a, **kw),
+                map(str),
+                sep.join,
+            ) + (post if post else '')
+        return joiner
+    return wrapper
+
+def table_lines(columns: T.Sequence[str], align: str = None):
+    pre = '| ' + pipe(columns, map(str), ' | '.join) + ' |\n'
+    pre += (
+        align if align else (('|:--' * len(columns)) + '|')
+    ) + '\n'
+    return join_lines('\n', pre=pre, post='\n')

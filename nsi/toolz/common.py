@@ -10,6 +10,7 @@ import builtins
 import collections
 import textwrap
 import inspect
+import types
 import statistics
 import importlib
 from click import Argument
@@ -51,9 +52,9 @@ __all__ = [
 
 
     # common
-    'as_tuple', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 'cconcatv',
-    'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 'do_error',
-    'do_info', 'do_log', 'do_slice', 'error_raise', 'endswith',
+    'as_tuple', 'as_dict', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 
+    'cconcatv', 'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 
+    'do_error', 'do_info', 'do_log', 'do_slice', 'error_raise', 'endswith',
     'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'get_t', 'help_text',
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int', 'is_numeric',
@@ -63,7 +64,7 @@ __all__ = [
     'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe', 'maybe_call',
     'max', 'maybe_first', 'maybe_float', 'maybe_int', 'maybe_last',
     'maybe_max', 'maybe_min', 'maybe_pipe', 'maybe_second', 'min',
-    'mini_tb', 'noop', 'replace', 'sc_juxt',
+    'mini_tb', 'setglobal', 'setlocal', 'noop', 'replace', 'sc_juxt',
     'select', 'seti', 'seti_t', 'short_circuit', 'shuffled',
     'sort_by', 'sorted', 'split', 'splitlines', 'starmap', 'startswith',
     'strip', 'to_io', 'to_bytes', 'to_str', 'upper', 'val',
@@ -154,6 +155,26 @@ def ceval(source, globals=None, locals=None):
     '''
     return eval(source, globals, locals)
 
+def _find_shell_frame(frame: types.FrameType | None) -> types.FrameType:
+    if frame is None:
+        raise RecursionError('Could not find shell frame')
+    if frame.f_lineno == 1:
+        return frame
+    return _find_shell_frame(frame.f_back)
+
+@curry
+def setglobal(name: str, value: Any, globals_dict: dict = None):
+    if globals_dict is None:
+        globals_dict = _find_shell_frame(inspect.currentframe()).f_globals
+    globals_dict[name] = value
+    return value
+
+@curry
+def setlocal(name: str, value: Any, locals_dict: dict = None):
+    if locals_dict is None:
+        locals_dict = _find_shell_frame(inspect.currentframe()).f_locals
+    locals_dict[name] = value
+    return value
 
 def noop(value):
     '''Yes, we have no banana pudding.
@@ -229,6 +250,7 @@ def contains(value, obj):
     True
     '''
     return value in obj
+
 
 # ----------------------------------------------------------------------
 #
@@ -378,9 +400,43 @@ def flatdict(obj: Union[dict, Any], keys=()):
         yield keys + (obj,)
 
 def as_tuple(func):
+    '''
+    Function decorator that causes a generator function to return a tuple of its
+    generated values.
+
+    Examples: 
+
+    >>> @as_tuple
+    ... def f():
+    ...     yield 1
+    ...     yield 2
+    ...
+    >>> f() == (1, 2)
+    True
+    '''
     @functools.wraps(func)
     def wrapper(*a, **kw):
         return tuple(func(*a, **kw))
+    return wrapper
+
+def as_dict(func):
+    '''
+    Function decorator that causes a generator function to return a merged
+    dictionary of generated dictionaries
+
+    Examples: 
+
+    >>> @as_dict
+    ... def f():
+    ...     yield {'a': 1}
+    ...     yield {'b': 2}
+    ...
+    >>> f() == {'a': 1, 'b': 2}
+    True
+    '''
+    @functools.wraps(func)
+    def wrapper(*a, **kw):
+        return merge(func(*a, **kw))
     return wrapper
 
 # ---------------------------

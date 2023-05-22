@@ -533,6 +533,14 @@ class Node(T.TypedDict):
     tests: T.Sequence[Test]
 '''
 
+PortArg = str | int | T.Sequence[int|str]
+def port_set(ports: PortArg):
+    return pipe(
+        ports if is_seq(ports) else [ports],
+        map(int),
+        set,
+    )
+
 class Node(Base, NexposeData):
     typed_dict = types.Node
     repr_keys = (
@@ -556,6 +564,7 @@ class Node(Base, NexposeData):
     
     endpoints = relationship('Endpoint', back_populates='node')
     fingerprints = relationship('NodeFingerprint', back_populates='node')
+
     names = relationship('NodeName', back_populates='node')
     software = relationship('Software', back_populates='node')
     tests = relationship('NodeTest', back_populates='node')
@@ -590,15 +599,27 @@ class Node(Base, NexposeData):
 
     @classmethod
     @curry
-    def has_os(cls, os: str | T.Tuple[str], node: 'Node', *, no: bool = False):
-        oses = [os] if is_str(os) else os
+    def has_os(cls, with_os: str | T.Sequence[str], node: 'Node', *, 
+               without_os: str = None):
+        with_regexes = [with_os] if is_str(with_os) else with_os
+    
+        without_os = without_os or []
+        without_regexes = [without_os] if is_str(without_os) else without_os
+    
         node_os = cls.get_os(node)
-        return pipe(
-            oses,
-            filter(lambda o: re.search(o, node_os, re.I)),
+        with_matches = pipe(
+            with_regexes,
+            filter(lambda regex: re.search(regex, node_os, re.I)),
             tuple,
-            complement(bool) if no else bool,
         )
+        without_matches = pipe(
+            without_regexes,
+            filter(lambda regex: re.search(regex, node_os, re.I)),
+            tuple,
+        )
+        if with_matches and not without_matches:
+            return True
+        return False
 
     @classmethod
     @curry
@@ -633,12 +654,25 @@ class Node(Base, NexposeData):
 
     @classmethod
     @curry
-    def has_ports(cls, port: str | T.Tuple[int], node: 'Node', *, no: bool = False):
-        ports = set(port if is_seq(port) else [port])
+    def has_ports(cls, port: PortArg, node: 'Node', *, 
+                  no: bool = False):
+        ports = port_set(port)
         return pipe(
             node.ports & ports,
             complement(bool) if no else bool,
         )
+    
+    @classmethod
+    def with_ports(cls, with_port: PortArg, without_port: PortArg = None):
+        def query(session: Session):
+            in_ports = port_set(with_port)
+            port_filter = Endpoint.port.in_(in_ports)
+            if without_port:
+                port_filter = port_filter & ~Node.endpoints.any(
+                    Endpoint.port.in_(port_set(without_port))
+                )
+            return session.query(cls).join(cls.endpoints).filter(port_filter)
+        return query
 
     @property
     def ports(self) -> T.Set[int]:

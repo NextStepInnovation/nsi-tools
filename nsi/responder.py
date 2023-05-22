@@ -17,8 +17,10 @@ class QueryDict(T.TypedDict):
     proto: str
     raw_ip: str
     query: str
-
+    service: str
     ip: str
+
+QueryList = T.Sequence[QueryDict]
 
 def enrich_query(query: QueryDict):
     return merge(
@@ -88,7 +90,7 @@ queries_from_lines = compose_left(
 #         map(enrich_query),
 #     )
 
-def queries_from_content(content: str):
+def queries_from_content(content: str) -> QueryList:
     return pipe(
         content,
         query_re.finditer,
@@ -100,12 +102,12 @@ def queries_from_content(content: str):
 #     splitlines, queries_from_lines,
 # )
 
-queries_from_path = compose_left(
+queries_from_path: T.Callable[[Path], QueryList] = compose_left(
     slurp, 
     queries_from_content,
 )
     
-def queries_to_table(queries: T.Iterator[QueryDict]):
+def queries_to_table(queries: QueryList):
     return pipe(
         queries,
         groupby('ip'),

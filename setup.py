@@ -69,6 +69,7 @@ setup(
         'strip-ansi',
         'toolz',
         'webdav',
+        'xmltodict',
         'xmljson',
         'openpyxl',
         'pycomplete',

@@ -85,7 +85,7 @@ def make_table(columns=None, col_map=None,
     ...    print,
     ... )
     | ColA | ColB |
-    |:--|:--|
+    |:-----|:-----|
     | 1 | 2 |
     | 3 | 4 |
     '''
