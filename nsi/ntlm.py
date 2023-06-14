@@ -17,13 +17,13 @@ ntlm_re = re.compile(
     r'(?P<ntlm>\w{32}:\w{32})', 
 )
 ntlm_all_re = re.compile(
-    r'(?:(?P<domain>\S+?)\\)?(?P<user>\S+):(?P<sid>\d+):(?P<lm>\w{32}):(?P<nt>\w{32})', 
+    r'(?:(?P<domain>\S+?)[\\/])?(?P<user>[A-Za-z0-9\.\_\- ]+?):(?P<sid>\d+):(?P<lm>\w{32}):(?P<nt>\w{32})', 
 )
 # ntlm_domain_re = re.compile(
 #     r'(?P<user>\w+):(?P<sid>\d+):(?P<lm>\w{32}):(?P<nt>\w{32})', 
 # )
 dcc2_re = re.compile(
-    r'(?P<domain>\S+?)/(?P<user>\S+):(?P<dcc2>\$DCC2\$\d+#\S+#\w{32})'
+    r'(?P<domain>\S+?)/(?P<user>[A-Za-z0-9\.\_\- ]+?):(?P<dcc2>\$DCC2\$\d+#\S+#\w{32})'
 )
 
 def parse_ntlm_from_lines(lines: T.Iterable[str]):
