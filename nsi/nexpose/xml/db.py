@@ -5,7 +5,7 @@ import re
 import typing as T
 
 from sqlalchemy import (
-    ForeignKey, create_engine, Table, Column, String, Integer, Float,
+    ForeignKey, create_engine, Table, Column, String, Integer, Float, true,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (
@@ -261,8 +261,23 @@ class Test(Base, NexposeData):
     }
 
     @classmethod
+    def node_filter(cls, addresses: IpList):
+        return NotImplemented
+
+    @classmethod
+    def node_tag_filter(cls, addresses: IpList, include_tags: TagList, 
+                        exclude_tags: TagList):
+        node_filter = cls.node_filter(addresses)
+        tag_filter = cls.tag_filter(include_tags, exclude_tags)
+        if tag_filter is not None:
+            return node_filter & tag_filter
+        return node_filter
+
+    @classmethod
     def tag_filter(cls, include_tags: TagList, exclude_tags: TagList):
-        return cls.finding.has(Finding.tag_filter(include_tags, exclude_tags))
+        tag_filter = Finding.tag_filter(include_tags, exclude_tags)
+        if tag_filter is not None:
+            return cls.finding.has(tag_filter)
 
 
 
@@ -997,16 +1012,17 @@ class Finding(Base, NexposeData):
     def tag_filter(cls, include_tags, exclude_tags):
         match (include_tags, exclude_tags):
             case (None, None):
-                return True
+                return None
             case (None, exclude):
                 return ~Finding.tags.any(Tag.name.in_(exclude_tags))
             case (include, None):
-                return True
+                return None
             case (include, exclude):
-                return (
+                filter = (
                     Finding.tags.any(Tag.name.in_(include_tags)) | 
                     ~Finding.tags.any(Tag.name.in_(exclude_tags))
                 )
+                return filter
 
 
 '''
