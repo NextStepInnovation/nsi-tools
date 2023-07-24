@@ -22,7 +22,7 @@ from ...toolz import (
 from . import parser
 from . import types
 from .types import (
-    TagName, TagList, Ip, IpList,
+    TagName, TagList, Ip, IpList, RegexList,
 )
 
 __all__ = [
@@ -265,23 +265,33 @@ class Test(Base, NexposeData):
         return NotImplemented
 
     @classmethod
-    def node_tag_filter(cls, addresses: IpList, include_tags: TagList, 
-                        exclude_tags: TagList):
+    def node_finding_filter(cls, addresses: IpList, 
+                            include_tags: TagList, exclude_tags: TagList, 
+                            include_regex: RegexList = None,
+                            exclude_regex: RegexList = None):
         node_filter = cls.node_filter(addresses)
-        tag_filter = cls.tag_filter(include_tags, exclude_tags)
-        if tag_filter is not None:
-            return node_filter & tag_filter
+        finding_filter = cls.finding_filter(
+            include_tags, exclude_tags, include_regex, exclude_regex,
+        )
+        if finding_filter is not None:
+            return node_filter & finding_filter
         return node_filter
 
     @classmethod
-    def tag_filter(cls, include_tags: TagList, exclude_tags: TagList):
-        tag_filter = Finding.tag_filter(include_tags, exclude_tags)
-        if tag_filter is not None:
-            return cls.finding.has(tag_filter)
+    def finding_filter(cls, include_tags: TagList, exclude_tags: TagList,
+                       include_regex: RegexList, exclude_regex: RegexList):
+        finding_filter = Finding.finding_filter(
+            include_tags, exclude_tags,  include_regex, exclude_regex,
+        )
+        if finding_filter is not None:
+            log.error(finding_filter)
+            return cls.finding.has(finding_filter)
+        
 
 
 
 class ServiceTest(Test):
+    typed_dict = types.ServiceTest
     service_id = Column(Integer, ForeignKey('service.table_id'))
     service = relationship('Service', back_populates='tests')
 
@@ -305,6 +315,7 @@ class ServiceTest(Test):
         return self.service.endpoint.node
 
 class NodeTest(Test):
+    typed_dict = types.NodeTest
     node_id = Column(Integer, ForeignKey('node.table_id'))
     node = relationship('Node', back_populates='tests')
 
@@ -1009,20 +1020,67 @@ class Finding(Base, NexposeData):
         )
 
     @classmethod
-    def tag_filter(cls, include_tags, exclude_tags):
+    def finding_filter(cls, include_tags: TagList, exclude_tags: TagList,
+                       include_regex: RegexList = None, 
+                       exclude_regex: RegexList = None):
+        regex_filter = cls.regex_filter(include_regex, exclude_regex)
         match (include_tags, exclude_tags):
             case (None, None):
-                return None
+                return regex_filter
             case (None, exclude):
-                return ~Finding.tags.any(Tag.name.in_(exclude_tags))
+                tag_filter = ~Finding.tags.any(Tag.name.in_(exclude_tags))
+                if regex_filter is not None:
+                    return tag_filter & regex_filter
+                return tag_filter
             case (include, None):
-                return None
+                return regex_filter
             case (include, exclude):
                 filter = (
                     Finding.tags.any(Tag.name.in_(include_tags)) | 
                     ~Finding.tags.any(Tag.name.in_(exclude_tags))
                 )
+                if regex_filter is not None:
+                    return filter & regex_filter
                 return filter
+            
+    @classmethod
+    def regex_filter(cls, include_regex: RegexList, exclude_regex: RegexList):
+        def join_regexes(regexes: RegexList):
+            return pipe(
+                regexes,
+                map(re.escape),
+                '|'.join,
+                lambda s: f'({s})'
+            )
+        
+        log.error('here')
+        log.error((include_regex, exclude_regex))
+        
+        match (include_regex, exclude_regex):
+            case (None | [], None | []):
+                return None
+            case (None | [], exclude):
+                exclude = join_regexes(exclude)
+                log.error(exclude)
+                return ~(Finding.title.regexp_match(exclude) |
+                         Finding.description.regexp_match(exclude))
+            case (include, None | []):
+                return None
+            case (include, exclude):
+                include, exclude = pipe(
+                    (include, exclude),
+                    map(join_regexes)
+                )
+                log.error(include)
+                log.error(exclude)
+                filter = (
+                    (Finding.title.regexp_match(include) |
+                     Finding.description.regexp_match(include)) |
+                    ~(Finding.title.regexp_match(exclude) |
+                      Finding.description.regexp_match(exclude))
+                )
+                return filter
+
 
 
 '''

@@ -3,7 +3,7 @@ import logging
 
 import markdown
 
-from ..toolz import merge, pipe
+from ..toolz import merge, pipe, is_dict
 from .. import yaml
 
 log = logging.getLogger(__name__)
@@ -61,11 +61,21 @@ class MetaYamlPreprocessor(markdown.preprocessors.Preprocessor):
         meta_lines, lines = meta_and_content_as_lines(lines)
 
         if meta_lines:
-            meta = yaml.load('\n'.join(meta_lines))
-            if self.md.meta is not None:
-                self.md.meta = merge(self.md.meta, meta)
-            else:
-                self.md.meta = meta
+            match yaml.load('\n'.join(meta_lines)):
+                case meta if is_dict(meta):
+                    if self.md.meta is None:
+                        self.md.meta = meta
+                    else:
+                        self.md.meta = merge(self.md.meta, meta)
+                case error:
+                    log.error(
+                        'Metadata lines:\n' +
+                        '\n'.join(meta_lines) +
+                        '\n  ... do not evaluate to a YAML dictionary/map.'
+                        ' They evauate to:\n' +
+                        f"{repr(error)} of type {type(error)}"
+                    )
+
         return lines
 
 class MetaYamlExtension(markdown.Extension):

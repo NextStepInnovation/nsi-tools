@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ..types import (
     Float, Int, Html, Timestamp, Url, Ip, 
-    TagName, TagId, TagList, IpList,
+    TagName, TagId, TagList, IpList, RegexList,
     VulnerabilityNexposeId,
 )
 
@@ -32,6 +32,12 @@ class Test(T.TypedDict):
     scan_id: Int
     status: str
     vulnerable_since: Timestamp
+
+class NodeTest(Test):
+    pass
+
+class ServiceTest(Test):
+    pass
 
 class Configuration(T.TypedDict):
     content: str

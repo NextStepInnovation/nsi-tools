@@ -48,7 +48,7 @@ setup(
         'jinja2',
         'jmespath',
         'lxml',
-        'markdown',
+        'markdown<3.2',
         'msgpack',
         'multipledispatch',
         'networkx',
