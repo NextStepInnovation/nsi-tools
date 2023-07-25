@@ -202,22 +202,47 @@ def read_text(path: T.Union[str, Path]):
     try:
         return path.read_text(encoding)
     except UnicodeDecodeError as unicode_err:
-        log.exception(
-            f'Tried to decode {repr(test_bytes[:20])} from'
-            f' {path} using {encoding} encoding.  Giving up.'
-        )
-        return ''
+        try:
+            log.debug(
+                f'  ... ran into Unicode errors. Trying cp1252 encoding for {path}'
+            )
+            encoding = 'cp1252'
+            return path.read_text(encoding)
+        except:
+            log.exception(
+                f'Tried to decode {repr(test_bytes[:20])} from'
+                f' {path} using {encoding} encoding.  Giving up and ignoring'
+                ' errors. THERE WILL BE DATA LOSS.'
+            )
+            return path.read_text('utf-8', errors='ignore')
     
 slurp = read_text
 
 @curry
 @ensure_paths
 def slurplines(path: Path, n: int = None, **open_kw):
-    with path.open(**open_kw) as rfp:
-        for i, line in enumerate(rfp):
-            if n is not None and i == n:
-                break
-            yield line.rstrip('\n')
+    def merge_kws(**kw):
+        return merge(open_kw, kw)
+    
+    try:
+        with path.open(**open_kw) as rfp:
+            for i, line in enumerate(rfp):
+                if n is not None and i == n:
+                    break
+                yield line.rstrip('\n')
+    except UnicodeDecodeError as unicode_err:
+        try:
+            encoding = 'cp1252'
+            log.debug(
+                f'  ... ran into Unicode errors. Trying cp1252 encoding for {path}'
+            )
+            yield from slurplines(path, n=n, **merge_kws(encoding=encoding))
+        except:
+            log.exception(
+                f'Tried to decode {path} using {encoding} encoding.'
+                '  Giving up and ignoring errors. THERE WILL BE DATA LOSS.'
+            )
+            yield from slurplines(path, n=n, **merge_kws(errors='ignore'))
 
 
 @curry

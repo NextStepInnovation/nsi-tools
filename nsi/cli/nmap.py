@@ -329,6 +329,10 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
                     } for p in host['ports']]),
                     tuple,
                 )
+            case unhandled:
+                log.error(
+                    f'Cannot determine the type of this nmap output: {unhandled}'
+                )
 
         
     rows = pipe(
