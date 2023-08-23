@@ -1,4 +1,5 @@
-'''Tools for dealing with Rapid7's Nexpose scanner
+'''
+Tools for dealing with Rapid7's Nexpose scanner
 '''
 
 import pprint
@@ -242,4 +243,141 @@ def report_stats(xml_paths, output_path):
     )
 
 
+@nexpose_command.command(
+    help='''
+    Start a Nexpose scan of a set of assets
+    '''
+)
+@config_option
+@click.option(
+    '-n', '--name', help='''
+    Name of report. If not given, will be ['-'.join(sites)]-nexpose-data
     
+    Will function as stem of file path if --output-path not given.
+    '''
+)
+@click.option(
+    '-o', '--output-path', type=click.Path(),
+    help='''
+    Path to write Report XML data. If not given, will be constructed from
+    --name.
+    '''
+)
+@click.option(
+    '--force', is_flag=True, help='''
+    Force regeneration of report content. Normally, if report has already been
+    generated, then this will pull the old content.
+    '''
+)
+@click.option(
+    '--keep', is_flag=True, help='''
+    Keep the report on the Nexpose console. Otherwise, it will be deleted after
+    being written to the filesystem.
+    '''
+)
+def start_scan(config_path, name, output_path, force, keep):
+    log.info('Initializing Nexpose scan')
+
+    config = get_config(config_path)
+    api = nexpose.api.new_api(**config['nexpose'])
+
+    site_map = get_api_obj(config, nexpose.sites.site_map, api)
+    site_names = pipe(site_map, keyfilter(is_str), sorted)
+
+    # bad_sites = set(sites) - set(site_names)
+    # if bad_sites:
+    #     log.error(
+    #         'The following provided sites do not exist in the configured'
+    #         ' Nexpose console:'
+    #     )
+    #     for name in bad_sites:
+    #         log.error(f'- {name}')
+    #     log.error(
+    #         'The following are valid site names:'
+    #     )
+    #     for name in site_names:
+    #         log.error(f'- {name}')
+    #     raise click.Abort
+
+    # log.info(f'Downloading {len(sites)} report(s) for the following sites:')
+    # for site in sites:
+    #     log.info(f'- {site}')
+
+    # if name is None:
+    #     name = pipe(
+    #         sites,
+    #         sorted,
+    #         '-'.join,
+    #     )
+    # if output_path is None:
+    #     output_path = f'{name}-nexpose-data.xml'
+    # output_path = Path(output_path).expanduser()
+
+    # log.info(
+    #     f'Downloading XML data and writing to {output_path}'
+    # )
+
+    # success, content = nexpose.reports.download_report(
+    #     api, name, site_ids=sites, force_regen=force,
+    # )
+
+    # if success:
+    #     output_path.write_bytes(content)
+
+    # if not keep:
+    #     log.info(f'Destroying report: {name}')
+    #     nexpose.reports.destroy_report(api, name)
+    
+
+@nexpose_command.command(
+    help='''
+    Get a list of scan engines
+    '''
+)
+@config_option
+def list_scan_engines(config_path):
+    log.info('Getting list of scan engines:')
+    config = get_config(config_path)
+    api = nexpose.api.new_api(**config['nexpose'])
+
+    engine_map = get_api_obj(config, nexpose.scan_engines.engine_map, api)
+    site_names = pipe(engine_map, keyfilter(is_str), sorted)
+
+    
+    pipe(
+        site_names,
+        map(lambda n: (n, engine_map[n])),
+        vmap(lambda n, d: (
+            n, d['id']
+        )),
+        vmap(lambda n, id: f'- {n} (id: {id})'),
+        map(log.info),
+        tuple,
+    )
+
+@nexpose_command.command(
+    help='''
+    Create a new site
+    '''
+)
+@config_option
+def new_site(config_path):
+    log.info('Getting list of scan engines:')
+    config = get_config(config_path)
+    api = nexpose.api.new_api(**config['nexpose'])
+
+    engine_map = get_api_obj(config, nexpose.scan_engines.engine_map, api)
+    site_names = pipe(engine_map, keyfilter(is_str), sorted)
+
+    
+    pipe(
+        site_names,
+        map(lambda n: (n, engine_map[n])),
+        vmap(lambda n, d: (
+            n, d['id']
+        )),
+        vmap(lambda n, id: f'- {n} (id: {id})'),
+        map(log.info),
+        tuple,
+    )
+

@@ -9,11 +9,15 @@ from ..toolz import *
 from .. import yaml
 from ..rest import Api, get_json
 from .api import (
-    get_iterator, NexposeApiError, method_body, handle_error_response,
+    get_iterator, get_iterator500, 
+    NexposeApiError, method_body, handle_error_response,
 )
 from .types import (
-    AssetList, Site, SiteMap, SiteId, SiteNexposeId,
+    AssetList, Site, SiteMap, SiteId, SiteNexposeId, ErrorJson,
+    ScanEngineId,
 )
+
+from .scan_engines import engine_map
 
 log = logging.new_log(__name__)
 
@@ -29,7 +33,6 @@ def site_map(api: Api) -> SiteMap:
             {r['name']: r for r in sites},
             {r['id']: r for r in sites},
         ), 
-        do(lambda d: log.debug(tuple(d.keys()))),
     )
 
 def get_site(api: Api, site_id: SiteId) -> Site:
@@ -122,12 +125,13 @@ def set_metadata(api: Api, site_id: SiteId, new_meta: dict, replace: bool = Fals
     return set_site(api, site_id, {'description': new_description})
 
 def new_site_body(name: str, included: AssetList, excluded: AssetList, 
-                  description: str, metadata: dict):
+                  description: str, engine_id: int, metadata: dict):
     return merge(
         {
             'name': name,
             'description': merge_meta(description, metadata),
         },
+        {'engineId': engine_id} if engine_id else {},
         {
             'scan': merge(
                 {
@@ -140,14 +144,18 @@ def new_site_body(name: str, included: AssetList, excluded: AssetList,
                     ),
                 },
             ),
-        } if included or excluded else {},
+        } if (included or excluded) else {},
     )
 
-def new_site(api: Api, name: str, included: AssetList = (), excluded: AssetList = (),
-             description: str = '', metadata: dict = None):
+def new_site(api: Api, name: str, included: AssetList = (), 
+             excluded: AssetList = (), description: str = '', 
+             engine_id: ScanEngineId = None,
+             metadata: dict = None) -> T.Tuple[bool, Site | ErrorJson]:
     metadata = metadata or {}
+    engine_id = engine_map(api)[engine_id]['id'] if engine_id is not None else None
+    log.debug(f'engine id: {engine_id}')
     response = api('sites').post(json=new_site_body(
-        name, included, excluded, description, metadata
+        name, included, excluded, description, engine_id, metadata
     ))
     match response:
         case Response(status_code=201):
@@ -158,7 +166,7 @@ def new_site(api: Api, name: str, included: AssetList = (), excluded: AssetList 
 
 def mark_for_deletion(api: Api, site_id: SiteId):
     site = get_site(api, site_id)
-    _, meta = parse_meta(site['description'])
+    _desc, meta = parse_meta(site['description'])
     if meta.get('prevent_delete'):
         log_pprint(
             log.error, 
@@ -183,9 +191,17 @@ def log_pprint(logger_f, prefix: str, obj: T.Any):
 
 def delete_site(api: Api, site_id: int):
     site = get_site(api, site_id)
-    _, meta = parse_meta(site['description'])
+    _desc, meta = parse_meta(site['description'])
 
-    if not meta.get('allow_delete') or meta.get('prevent_delete'):
+    def can_delete():
+        if meta.get('prevent_delete'):
+            return False
+        if 'allow_delete' in meta:
+            if not meta['allow_delete']:
+                return False
+        return True
+
+    if not can_delete():
         log_pprint(
             log.error, 'Deletion not allowed for this site.', dict(meta)
         )
@@ -194,13 +210,26 @@ def delete_site(api: Api, site_id: int):
             'message': f'Deletion not allowed for this site: {meta}'
         }
 
-    # response = api('sites', site['id']).delete()
-    # match response:
-    #     case Response(status_code=200):
-    #         return True, {}
-    #     case error_response:
-    #         return handle_error_response('Error in Site deletion', error_response)
+    response = api('sites', site['id']).delete()
+    match response:
+        case Response(status_code=200):
+            return True, site
+        case error_response:
+            return handle_error_response('Error in Site deletion', error_response)
 
-# def site_assets(api: Api, site_id: SiteId):
-#     site = get_
+@curry
+def site_data(api: Api, site_id: SiteId, data_path: T.Sequence[str]):
+    '''
+    Returns an iterator for the data associated with the data_path. E.g. assets,
+    alerts, etc.
+    '''
+    return get_iterator500(
+        ['sites', get_site(api, site_id)['id'], *data_path], api
+    )()
+
+site_assets = site_data(data_path=['assets'])
+site_alerts = site_data(data_path=['alerts'])
+site_smtp_alerts = site_data(data_path=['alerts', 'smtp'])
+site_snmp_alerts = site_data(data_path=['alerts', 'snmp'])
+site_syslog_alerts = site_data(data_path=['alerts', 'syslog'])
 

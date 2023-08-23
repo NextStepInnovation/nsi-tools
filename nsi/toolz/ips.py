@@ -242,14 +242,25 @@ def ip_to_seq(ip, expand_network: bool=True) -> T.Sequence[str]:
         return [str(ip_address(int(base) + i))
                 for i in range(last - first + 1)]
     else:
-        log.error(f'Unknown/unparsable ip value: {ip}')
+        log.error(f'Unknown/unparsable ip value: {repr(ip)}')
         return []
 
 def ip_tuple(ip):
     return pipe(str(ip).split('.'), map(int), tuple)
 
+def normalize_ip_element(ip: str):
+    match strip()(strip_comments(ip)):
+        case interface if is_interface(ip):
+            return ip_interface(interface).network.network_address
+        case address if is_ip(ip):
+            return ip_address(ip)
+        case unknown:
+            raise TypeError(f'Cannot normalize IP element: {unknown}')
+        
+
 def sortips(ips):
-    return sort_by(compose(ip_address, strip(), strip_comments), ips)
+    return sort_by(normalize_ip_element, ips)
+
 sort_ips = sortips
 
 def get_ips_from_file(path):

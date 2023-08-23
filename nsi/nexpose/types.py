@@ -18,6 +18,12 @@ Timestamp = T.NewType('Timestamp', str)
 Int = T.NewType("Int", str)
 Float = T.NewType('Float', str)
 Html = T.NewType('Html', str)
+ErrorJson = T.NewType('ErrorJson', dict)
+
+from ..types import (
+    Url, Ip, IpList, Regex, RegexList, Mac, Port, Protocol, Timestamp, 
+    Int, Float,
+)
 
 class Link(T.TypedDict):
     href: Url
@@ -431,6 +437,7 @@ SiteNexposeId = T.NewType('SiteNexposeId', int)
 SiteId = T.Union[str, SiteNexposeId]
 SiteList = T.Iterable[SiteId]
 SiteMap = T.Dict[SiteId, Site]
+
 
 
 # -----------------------------------------------------------------------------

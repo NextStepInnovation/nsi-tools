@@ -7,14 +7,15 @@ import logging
 import pprint
 import json
 import sys
+import urllib; from urllib.parse import ParseResult
 import random
 import typing as T
 
 import click
 import pyperclip
-from .. import toolz as _
 from ..toolz import (
     pipe, curry, compose, map, filter, do, groupby, mapcat, ensure_paths, noop,
+    vcall, compose_left, ip_to_seq,
 )
 
 from .. import toolz as _
@@ -22,7 +23,7 @@ from .. import parallel, logging, http
 
 log = logging.new_log(__name__)
 
-shared_options = _.compose_left(
+shared_options = compose_left(
     click.option(
         '-i', '--input-path', type=click.Path(
             exists=True, dir_okay=False, resolve_path=True,
@@ -31,6 +32,11 @@ shared_options = _.compose_left(
         Path with list of input data (IP addresses, ports, etc) to scan, one
         unit per line
         ''',
+    ),
+    click.option(
+        '-u', '--url', help='''
+        Specific URL to target
+        '''
     ),
     click.option(
         '-t', '--target',
@@ -162,7 +168,7 @@ def run_and_output(output_raw_f: T.Callable[[str], Path],
     Timeout for individual dirb processess in seconds
     ''',
 )
-def dirb_ips(input_path, target, port, no_ssl, ssl, ssh_user, ssh_host,
+def dirb_ips(input_path, url, target, port, no_ssl, ssl, ssh_user, ssh_host,
              force, randomize, dry_run, loglevel, output_dir, timeout, ):
     '''Use dirb to enumerate webservers at various IP addressses.
 
@@ -189,7 +195,7 @@ def dirb_ips(input_path, target, port, no_ssl, ssl, ssh_user, ssh_host,
     elif target:
         log.info(f'Reading IP from target: {target}')
         ip_data = [
-            (ip, port, ssl) for ip in _.ip_to_seq(target)
+            (ip, port, ssl) for ip in ip_to_seq(target)
         ]
     else:
         log.error('No IP information given')
@@ -210,7 +216,7 @@ def dirb_ips(input_path, target, port, no_ssl, ssl, ssh_user, ssh_host,
         ip, port=port, ssl=ssl, timeout=timeout, dry_run=dry_run,
     )
 
-    run_f = _.vcall(run_and_output(
+    run_f = vcall(run_and_output(
         output_raw_f, output_json_f, command_f, 'dirb', dry_run,
     ))
 
@@ -225,7 +231,7 @@ def dirb_ips(input_path, target, port, no_ssl, ssl, ssh_user, ssh_host,
         filter(should_run_f),
         pmap(run_f),
         tuple,
-        _.compose_left(pprint.pformat, log.info)
+        compose_left(pprint.pformat, log.info)
     )
     
 
@@ -241,7 +247,7 @@ def dirb_ips(input_path, target, port, no_ssl, ssl, ssh_user, ssh_host,
     Timeout for individual nikto processess in seconds
     ''',
 )
-def nikto_ips(input_path, target, port, ssl, no_ssl, ssh_user, ssh_host,
+def nikto_ips(input_path, url, target, port, ssl, no_ssl, ssh_user, ssh_host,
               force, randomize, dry_run, loglevel, output_dir, timeout, ):
     '''Use nikto to enumerate webservers at various IP addressses.
 
@@ -261,7 +267,15 @@ def nikto_ips(input_path, target, port, ssl, no_ssl, ssh_user, ssh_host,
     elif target:
         log.info(f'Reading IP from target: {target}')
         ip_data = [
-            (ip, port, ssl) for ip in _.ip_to_seq(target)
+            (ip, port, ssl) for ip in ip_to_seq(target)
+        ]
+    elif url:
+        log.info(f'Targeting a specific URL: {url}')
+        purl = urllib.parse.urlparse(url)
+        # if 
+        # port = 
+        ip_data = [
+            (url, port, ssl)
         ]
     else:
         log.error('No IP information given')
@@ -282,7 +296,7 @@ def nikto_ips(input_path, target, port, ssl, no_ssl, ssh_user, ssh_host,
         ip, port=port, ssl=ssl, timeout=timeout, dry_run=dry_run,
     )
 
-    run_f = _.vcall(run_and_output(
+    run_f = vcall(run_and_output(
         output_raw_f, output_json_f, command_f, 'nikto', dry_run,
     ))
 
@@ -297,7 +311,7 @@ def nikto_ips(input_path, target, port, ssl, no_ssl, ssh_user, ssh_host,
         filter(should_run_f),
         pmap(run_f),
         tuple,
-        _.compose_left(pprint.pformat, log.info)
+        compose_left(pprint.pformat, log.info)
     )
 
     # ssl, port = http.get_ssl_port(ssl, no_ssl, port)

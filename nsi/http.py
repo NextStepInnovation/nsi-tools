@@ -209,16 +209,17 @@ def get_ssl_port(ssl, no_ssl, port):
     return ssl, port
 
 @curry
-def dirb(host, port, ssl, *, timeout=DIRB_TIMEOUT,
+def dirb(host: str, port: int, ssl: bool, *, timeout=DIRB_TIMEOUT,
          getoutput=getoutput, dry_run=False):
     if not host.startswith('http'):
         proto = f'http{"s" if ssl else ""}'
         url = f'{proto}://{host}'
     else:
         url = host
+
     if port not in {80, 443}:
         url = f'{url}:{port}'
-    proto = f'http{"s" if ssl else ""}'
+
     agent = data.random_user_agent()
     command = f'dirb {url} -S -a "{agent}"'
 
@@ -247,7 +248,7 @@ NIKTO_TIMEOUT = (5 * 60)
 NIKTO_PORT = 80
 
 @curry
-def nikto(host, port, ssl, *, timeout=NIKTO_TIMEOUT,
+def nikto(host: str, port: int, ssl: bool, *, timeout=NIKTO_TIMEOUT,
           getoutput=getoutput, dry_run: bool = False):
     proto = f'http{"s" if ssl else ""}'
     if not host.startswith('http'):
@@ -255,8 +256,10 @@ def nikto(host, port, ssl, *, timeout=NIKTO_TIMEOUT,
         url = f'{proto}://{host}'
     else:
         url = host
+
     if port not in {80, 443}:
         url = f'{url}:{port}'
+
     agent = data.random_user_agent()
     command = f"nikto -useragent '{agent}' -host {url}"
 
