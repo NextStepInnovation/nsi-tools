@@ -70,8 +70,11 @@ def scan_ips(api: Api, ip_list: IpList,
         ip_list, 
         filter(is_ip),
         map(ip_address), 
+        set,
         tuple,
     )
+
+    potential_ips = len(ips)
 
     if interfaces:
         n_interface_ips = pipe(
@@ -83,6 +86,26 @@ def scan_ips(api: Api, ip_list: IpList,
             f'  ... found {len(interfaces)} interfaces in IP list with'
             f' {n_interface_ips} potential ips in it'
         )
+        potential_ips += len(n_interface_ips)
+
+    total_assets = pipe(
+        site_map(api),
+        values,
+        groupby(get('id')),
+        map(get('assets')),
+        sum,
+    )
+
+    log.info(
+        f'There are {total_assets} total assets currently defined for this site.'
+    )
+
+    potential_total_assets
+
+    if total_assets + potential_ips >= max_assets:
+        log.warning(
+            ''
+        )
 
     site_name = pipe(
         ip_list,
@@ -92,4 +115,4 @@ def scan_ips(api: Api, ip_list: IpList,
         lambda h: f'temp_site_{md5}_engine_{engine_id}'
     )
 
-    site = new_site(api, )
+    site = new_site(api, site_name)

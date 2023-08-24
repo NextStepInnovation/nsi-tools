@@ -1,33 +1,36 @@
 from pathlib import Path
 import typing as T
+import pprint
 
 from .. import logging
 from ..toolz import *
 
 log = logging.new_log(__name__)
 
-Url = T.NewType('Url', str)
-Ip = T.NewType('Ip', str)
-IpList = T.Sequence[Ip]
-Regex = T.NewType('Regex', str)
-RegexList = T.Sequence[Regex]
-Mac = T.NewType('Mac', str)
-Port = T.NewType('Port', int)
-Protocol = T.NewType('Protocol', str)
-Timestamp = T.NewType('Timestamp', str)
-Int = T.NewType("Int", str)
-Float = T.NewType('Float', str)
-Html = T.NewType('Html', str)
-ErrorJson = T.NewType('ErrorJson', dict)
+# Url = T.NewType('Url', str)
+# Ip = T.NewType('Ip', str)
+# IpList = T.Sequence[Ip]
+# Regex = T.NewType('Regex', str)
+# RegexList = T.Sequence[Regex]
+# Mac = T.NewType('Mac', str)
+# Port = T.NewType('Port', int)
+# Protocol = T.NewType('Protocol', str)
+# Timestamp = T.NewType('Timestamp', str)
+# Int = T.NewType("Int", str)
+# Float = T.NewType('Float', str)
+# Html = T.NewType('Html', str)
+# ErrorJson = T.NewType('ErrorJson', dict)
 
 from ..types import (
     Url, Ip, IpList, Regex, RegexList, Mac, Port, Protocol, Timestamp, 
-    Int, Float,
+    Int, Float, Html, ErrorJson,
 )
 
 class Link(T.TypedDict):
     href: Url
     rel: str
+
+LinkList = T.Sequence[Link]
 
 
 class Vulnerabilities(T.TypedDict):
@@ -258,7 +261,7 @@ class SearchCriteria(T.TypedDict):
 
 class LocalePreferences(T.TypedDict):
     default: str
-    links: T.Sequence[Link]
+    links: LinkList
     reports: str
 
 
@@ -307,7 +310,7 @@ class ReportEmail(T.TypedDict):
 class ReportConfigCategoryFilters(T.TypedDict):
     excluded: T.Sequence[str]
     included: T.Sequence[str]
-    links: T.Sequence[Link]
+    links: LinkList
 
 
 class ReportFrequency(T.TypedDict):
@@ -357,7 +360,7 @@ class Tag(T.TypedDict):
     color: str
     created: str
     id: TagNexposeId
-    links: T.Sequence[Link]
+    links: LinkList
     name: TagName
     riskModifier: float
     searchCriteria: SearchCriteria
@@ -366,7 +369,7 @@ class Tag(T.TypedDict):
 
 
 class VulnerabilityCvss(T.TypedDict):
-    links: T.Sequence[Link]
+    links: LinkList
     v2: VulnerabilityCvssV2
     v3: VulnerabilityCvssV3
 
@@ -375,7 +378,7 @@ class Service(T.TypedDict):
     configurations: T.Sequence[Configuration]
     databases: T.Sequence[Database]
     family: str
-    links: T.Sequence[Link]
+    links: LinkList
     name: str
     port: Port
     product: str
@@ -403,7 +406,7 @@ class Vulnerability(T.TypedDict):
     description: ContentDescription
     exploits: int
     id: VulnerabilityNexposeId
-    links: T.Sequence[Link]
+    links: LinkList
     malwareKits: int
     modified: str
     pci: PCI
@@ -425,7 +428,7 @@ class Site(T.TypedDict):
     id: int
     importance: str
     lastScanTime: str
-    links: T.Sequence[Link]
+    links: LinkList
     name: str
     riskScore: float
     scanEngine: int
@@ -452,7 +455,7 @@ class Scan(T.TypedDict):
     engineId: int
     engineName: str
     id: int
-    links: T.Sequence[Link]
+    links: LinkList
     message: str
     scanName: str
     scanType: str
@@ -466,6 +469,11 @@ ScanId = T.Union[T.Tuple[SiteId, str], ScanNextposeId]
 ScanMap = T.Dict[ScanId, Scan]
 ScanList = T.Iterable[ScanId]
 
+# -----------------------------------------------------------------------------
+# ScanEngine
+# -----------------------------------------------------------------------------
+
+
 class ScanEngine(T.TypedDict):
     address: str
     contentVersion: str
@@ -473,7 +481,7 @@ class ScanEngine(T.TypedDict):
     id: int
     lastRefreshedDate: str
     lastUpdatedDate: str
-    links: T.Sequence[Link]
+    links: LinkList
     name: str
     port: Port
     productVersion: str
@@ -482,6 +490,248 @@ class ScanEngine(T.TypedDict):
 ScanEngineNexposeId = T.NewType('ScanEngineNexposeId', int)
 ScanEngineId = T.Union[str, ScanEngineNexposeId]
 ScanEngineMap = T.Dict[ScanEngineId, ScanEngine]
+
+# -----------------------------------------------------------------------------
+# ScanTemplate
+# -----------------------------------------------------------------------------
+
+class ScanTemplateDatabase(T.TypedDict):
+    db2: str # Database name for DB2 database instance.
+    links: LinkList
+    oracle: T.Sequence[str] # Database name (SID) for an Oracle database instance.
+    postgres: str # Database name for PostgesSQL database instance.
+
+class ScanTemplateVulnerabilityCheckCategories(T.TypedDict):
+    # The categories of vulnerability checks to disable during a scan.
+    disabled: T.Sequence[str]
+    # The categories of vulnerability checks to enable during a scan.
+    enabled: T.Sequence[str]
+    # Hypermedia links to corresponding or related resources.
+    links: LinkList
+
+class ScanTemplateVulnerabilityCheckIndividual(T.TypedDict):
+    # The individual vulnerability checks to disable during a scan.
+    disabled: T.Sequence[str]
+    # The individual vulnerability checks to enable during a scan.
+    enabled: T.Sequence[str]
+    # Hypermedia links to corresponding or related resources.
+    links: LinkList
+
+class VulnerabilityCheckType(T.TypedDict):
+    # The types of vulnerability checks to disable during a scan.
+    disabled: T.Sequence[str]
+    # The types of vulnerability checks to enable during a scan.
+    enabled: T.Sequence[str]
+    # Hypermedia links to corresponding or related resources.
+    links: LinkList
+
+JsonApiDefinitionPropertyItem = T.TypedDict(
+    'JsonApiDefinitionPropertyItem', {
+        'type': str,
+        "$ref": str,
+    },
+)
+
+JsonApiDefinitionProperties = T.TypedDict(
+    'JsonApiDefinitionProperties', {
+        'type': str,
+        'readOnly': bool,
+        'description': str,
+        'items': JsonApiDefinitionPropertyItem,
+        'example': bool | str,
+        '$ref': str,
+    }
+)
+
+class JsonApiDefinition(T.TypedDict):
+    type: str
+    discriminator: str
+    properties: T.Dict[str, JsonApiDefinitionProperties]
+
+class ApiClass(T.TypedDict):
+    predicates: T.Sequence['ApiClass']
+    name: str
+    attributes: T.Sequence[
+        T.Tuple[
+            str, # name 
+            str, # type string
+            str, # example str
+            str, # description/comment
+        ]
+    ]
+
+api_class_bp = '''\
+{predicates}
+
+class {name}:
+{attributes}
+'''
+def api_class_to_str(api_class: ApiClass):
+    def desc_str(example: str, desc: str):
+        return pipe(
+            concatv(
+                desc.splitlines(),
+                ['', f'Example: {example}'] if example else [],
+            ),
+            map(lambda s: f'# {s}'),
+            map(lambda s: f'    {s}'),
+            '\n'.join,
+        )
+    
+    attributes_str = pipe(
+        api_class['attributes'],
+        vmap(lambda name, type, example, desc: (
+            f'{desc_str(example, desc)}\n'
+            f'    {name}: {type}'
+        )),
+        '\n'.join,
+    )
+    return api_class_bp.format(
+        predicates = pipe(
+            api_class['predicates'],
+            map(api_class_to_str),
+            '\n\n'.join,
+        ),
+        name=api_class['name'], 
+        attributes=attributes_str,
+    )
+
+class JsonApi(T.TypedDict):
+    definitions: T.Dict[str, JsonApiDefinition]
+
+def api_def_to_class(json_api: JsonApi, def_name: str, 
+                     def_list: T.Tuple[T.Tuple[str, ApiClass]]):
+    type_map = {
+        'string': 'str',
+        'integer': 'int',
+        'int32': 'int',
+        'int64': 'int',
+        'boolean': 'bool',
+        'number': 'float',
+    }
+    predicates = []
+    match json_api['definitions'][def_name]:
+        case {'type': 'object', 'properties': properties}:
+            attributes = []
+            for prop_name, property in properties.items():
+                def_lut: T.Dict[str, ApiClass] = dict(def_list)
+                example = property.get('example')
+                example = '' if example is None else str(example)
+                match property:
+                    case {'type': 'array',
+                          'description': desc,
+                          'items': {'type': array_type}}:
+                        attributes.append(
+                            (prop_name, 
+                             f'T.Sequence[{type_map[array_type]}]',
+                             example,
+                             desc)
+                        )
+                    case {'type': 'array', 
+                          'description': desc, 
+                          'items': {'$ref': "#/definitions/Link"}}:
+                        attributes.append(
+                            (prop_name, 
+                             f'LinkList',
+                             example,
+                             desc)
+                        )
+                    case {'type': type, 'description': desc}:
+                        attributes.append((
+                            prop_name, type_map[type], example, desc
+                        ))
+                    case {'$ref': ref, 'description': desc}:
+                        if ref in def_lut:
+                            api_class = def_lut[ref]
+                        else:
+                            ref_name = ref.split('/')[-1]
+                            api_class = api_def_to_class(
+                                json_api, ref_name, def_list,
+                            )
+                            log.info(f'{prop_name} {ref} {ref_name}')
+                            def_list = concatv_t(
+                                def_list,
+                                [(ref, api_class)],
+                            )
+                            predicates.append(api_class)
+                        attributes.append(
+                            (prop_name, 
+                             api_class['name'],
+                             example,
+                             desc)
+                        )
+
+            return ApiClass({
+                'name': def_name,
+                'attributes': attributes,
+                'predicates': predicates,
+            })
+
+            
+    
+class ScanTemplateVulnerabilityChecks(T.TypedDict):
+    # The vulnerability check categories enabled or disabled during a scan.
+    categories: ScanTemplateVulnerabilityCheckCategories
+    # Whether an extra step is performed at the end of the scan where more trust
+    # is put in OS patch checks to attempt to override the results of other
+    # checks which could be less reliable.
+    correlate: bool 
+    # The individual vulnerability checks enabled or disabled during a scan.
+    individual: ScanTemplateVulnerabilityCheckIndividual
+    # Hypermedia links to corresponding or related resources.
+    links: LinkList
+    # Whether checks that result in potential vulnerabilities are assessed during a scan.
+    potential: bool 
+    # The vulnerability check types enabled or disabled during a scan.
+    types: None 
+    # Whether checks considered "unsafe" are assessed during a scan.    
+    unsafe: bool 
+
+class ScanTemplate(T.TypedDict):
+    # Settings for which vulnerability checks to run during a scan. 
+    # 
+    # The rules for inclusion of checks is as follows: 
+    #  
+    # - Enabled checks by category and by check type are included
+    # - Disabled checks in by category and by check type are removed
+    # - Enabled checks in by individual check are added (even if they are
+    #   disabled in by category or check type)
+    # - Disabled checks in by individual check are removed
+    # - If unsafe is disabled, unsafe checks are removed
+    # - If potential is disabled, potential checks are removed
+    checks: None 
+
+    database: ScanTemplateDatabase # Settings for discovery databases.
+    description: str # A verbose description of the scan template..
+    discovery: None # Discovery settings used during a scan.
+    discoveryOnly: bool # Whether only discovery is performed during a scan.
+    # Whether Windows services are enabled during a scan. Windows services will
+    # be temporarily reconfigured when this option is selected. Original
+    # settings will be restored after the scan completes, unless it is
+    # interrupted.
+    enableWindowsServices: bool 
+    # Whether enhanced logging is gathered during scanning. Collection of
+    # enhanced logs may greatly increase the disk space used by a scan.
+    enhancedLogging: bool 
+    id: str # The identifier of the scan template
+    links: LinkList
+    maxParallelAssets: int 
+    # The maximum number of scan processes simultaneously allowed against each
+    # asset during a scan.
+    maxScanProcesses: int 
+    name: str # A concise name for the scan template.
+    policy: None # Policy configuration settings used during a scan.
+    policyEnabled: bool # Whether policy assessment is performed during a scan.
+    telnet: None # Settings for interacting with the Telnet protocol.
+    # Whether vulnerability assessment is performed during a scan.
+    vulnerabilityEnabled: bool 
+    web: None # Web spider settings used during a scan.
+    # Whether web spidering and assessment are performed during a scan.
+    webEnabled: bool 
+
+ScanTemplateNexposeId = T.NewType('ScanTemplateNexposeId', int)
+ScanTemplateId = T.Union[str, ScanTemplateNexposeId]
+ScanTemplateMap = T.Dict[ScanTemplateId, ScanTemplate]
 
 # -----------------------------------------------------------------------------
 # Asset
@@ -501,7 +751,7 @@ class Asset(T.TypedDict):
     id: int
     ids: T.Sequence[UniqueId]
     ip: Ip
-    links: T.Sequence[Link]
+    links: LinkList
     mac: Mac
     os: str
     osFingerprint: OperatingSystem
@@ -529,7 +779,7 @@ class User(T.TypedDict):
     email: str
     enabled: bool
     id: int
-    links: T.Sequence[Link]
+    links: LinkList
     locale: LocalePreferences
     locked: bool
     login: str
@@ -556,7 +806,7 @@ class Report(T.TypedDict):
     frequency: ReportFrequency
     id: int
     language: str
-    links: T.Sequence[Link]
+    links: LinkList
     name: str
     organization: str
     owner: int
