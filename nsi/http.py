@@ -248,9 +248,9 @@ NIKTO_TIMEOUT = (5 * 60)
 NIKTO_PORT = 80
 
 @curry
-def nikto(host: str, port: int, ssl: bool, *, timeout=NIKTO_TIMEOUT,
+def nikto(host: str, port: int, ssl: bool, *, 
+          path: str = None, timeout=NIKTO_TIMEOUT,
           getoutput=getoutput, dry_run: bool = False):
-    proto = f'http{"s" if ssl else ""}'
     if not host.startswith('http'):
         proto = f'http{"s" if ssl else ""}'
         url = f'{proto}://{host}'
@@ -262,6 +262,8 @@ def nikto(host: str, port: int, ssl: bool, *, timeout=NIKTO_TIMEOUT,
 
     agent = data.random_user_agent()
     command = f"nikto -useragent '{agent}' -host {url}"
+    if path is not None:
+        command = f'{command} -root "{path}"'
 
     log.info(f'[nikto] command: {command}')
     if dry_run:

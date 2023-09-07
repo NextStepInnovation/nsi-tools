@@ -15,7 +15,7 @@ import click
 import pyperclip
 from ..toolz import (
     pipe, curry, compose, map, filter, do, groupby, mapcat, ensure_paths, noop,
-    vcall, compose_left, ip_to_seq,
+    vcall, compose_left, ip_to_seq, vmap,
 )
 
 from .. import toolz as _
@@ -45,6 +45,11 @@ shared_options = compose_left(
     click.option(
         '-p', '--port', type=int,
         help='Port number for HTTP server',
+    ),
+    click.option(
+        '-P', '--path', help='''
+        Root path to append to all lookups
+        '''
     ),
     click.option(
         '--no-ssl', is_flag=True,
@@ -168,7 +173,7 @@ def run_and_output(output_raw_f: T.Callable[[str], Path],
     Timeout for individual dirb processess in seconds
     ''',
 )
-def dirb_ips(input_path, url, target, port, no_ssl, ssl, ssh_user, ssh_host,
+def dirb_ips(input_path, url, target, port, path, no_ssl, ssl, ssh_user, ssh_host,
              force, randomize, dry_run, loglevel, output_dir, timeout, ):
     '''Use dirb to enumerate webservers at various IP addressses.
 
@@ -213,7 +218,7 @@ def dirb_ips(input_path, url, target, port, no_ssl, ssl, ssh_user, ssh_host,
     should_run_f = should_run(output_json_f, force)
 
     command_f = lambda ip, port, ssl, dry_run: http.dirb(
-        ip, port=port, ssl=ssl, timeout=timeout, dry_run=dry_run,
+        ip, port=port, ssl=ssl, timeout=timeout, dry_run=dry_run, path=path,
     )
 
     run_f = vcall(run_and_output(
@@ -247,13 +252,13 @@ def dirb_ips(input_path, url, target, port, no_ssl, ssl, ssh_user, ssh_host,
     Timeout for individual nikto processess in seconds
     ''',
 )
-def nikto_ips(input_path, url, target, port, ssl, no_ssl, ssh_user, ssh_host,
+def nikto_ips(input_path, url, target, port, path, ssl, no_ssl, ssh_user, ssh_host,
               force, randomize, dry_run, loglevel, output_dir, timeout, ):
-    '''Use nikto to enumerate webservers at various IP addressses.
+    '''Use nikto to enumerate webservers at various IP addresses/URLs.
 
     Provide either (-i/--input-path) as file with list of IP
-    addresses/networks/interfaces or (-t/--target) with single one of
-    the same.
+    addresses/networks/interfaces, (-t/--target) with single one of
+    the same, or (-u/--url) with an explicit URL to target.
 
     '''
     logging.setup_logging(loglevel)
@@ -283,7 +288,7 @@ def nikto_ips(input_path, url, target, port, ssl, no_ssl, ssh_user, ssh_host,
             'No IP information given, provide either'
             ' -i/--input-path or -t/--target'
         )
-
+    
     output_dir_path = Path(output_dir).expanduser().resolve()
 
     host_dir_f = host_dir(output_dir_path)
@@ -292,8 +297,8 @@ def nikto_ips(input_path, url, target, port, ssl, no_ssl, ssh_user, ssh_host,
 
     should_run_f = should_run(output_json_f, force)
 
-    command_f = lambda ip, port, ssl, dry_run: http.nikto(
-        ip, port=port, ssl=ssl, timeout=timeout, dry_run=dry_run,
+    command_f = lambda ip, port, ssl, dry_run:  http.nikto(
+        ip, port=port, ssl=ssl, timeout=timeout, dry_run=dry_run, path=path,
     )
 
     run_f = vcall(run_and_output(
@@ -311,7 +316,7 @@ def nikto_ips(input_path, url, target, port, ssl, no_ssl, ssh_user, ssh_host,
         filter(should_run_f),
         pmap(run_f),
         tuple,
-        compose_left(pprint.pformat, log.info)
+        compose_left(pprint.pformat, lambda s: log.info(f'outcome tuple: {s}'))
     )
 
     # ssl, port = http.get_ssl_port(ssl, no_ssl, port)
