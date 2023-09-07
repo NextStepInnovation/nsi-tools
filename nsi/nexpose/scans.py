@@ -7,7 +7,7 @@ from .. import logging
 from ..toolz import *
 from ..rest import Api, get_json
 from .api import (
-    get_iterator, get_iterator500, NexposeApiError, 
+    get_iterator, get_iterator500, NexposeApiError, api_object_getter,
 )
 from .types import (
     Scan, ScanId, ScanMap, 
@@ -19,7 +19,6 @@ from .search import (
     Ops, get_field, FilterMatch,
 )
 
-from .sites import site_map, new_site
 from .scan_engines import engine_map
 
 log = logging.new_log(__name__)
@@ -39,13 +38,16 @@ def scan_map(api: Api) -> ScanEngineMap:
         do(lambda d: log.debug(tuple(d.keys()))),
     )
 
+get_scan = api_object_getter(scan_map)
+
 max_assets = 1024
 
 class ScanStatus(T.TypedDict):
     pass
 
-def scan_ips(api: Api, ip_list: IpList, 
+def scan_ips(api: Api, site_name: str, ip_list: IpList,
              engine_id: ScanEngineId) -> T.Iterator[ScanStatus]:
+    from .sites import site_map, new_site, new_site_scan
     log.info(
         f'Staring scan of {len(ip_list)} IP elements'
         f' using scan engine {engine_id}'
@@ -88,23 +90,26 @@ def scan_ips(api: Api, ip_list: IpList,
         )
         potential_ips += len(n_interface_ips)
 
-    total_assets = pipe(
+    existing_assets = pipe(
         site_map(api),
         values,
         groupby(get('id')),
+        valmap(first),
         map(get('assets')),
         sum,
     )
 
     log.info(
-        f'There are {total_assets} total assets currently defined for this site.'
+        f'There are {existing_assets} total assets currently defined for this site.'
     )
 
-    potential_total_assets
+    potential_total_assets = existing_assets + potential_ips
 
-    if total_assets + potential_ips >= max_assets:
+    if potential_total_assets >= max_assets:
         log.warning(
-            ''
+            'You have requested a scan that potentially will put the total'
+            f' number of assets at {potential_total_assets}, which is above'
+            f' to maximum number of assets ({max_assets}).'
         )
 
     site_name = pipe(
@@ -112,7 +117,11 @@ def scan_ips(api: Api, ip_list: IpList,
         sort_ips,
         json_dumps,
         md5,
-        lambda h: f'temp_site_{md5}_engine_{engine_id}'
+        lambda h: f'temp_site_{site_name}_{md5}_engine_{engine_id}'
     )
 
     site = new_site(api, site_name)
+
+    new_site_scan(
+
+    )

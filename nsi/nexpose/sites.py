@@ -10,14 +10,17 @@ from .. import yaml
 from ..rest import Api, get_json
 from .api import (
     get_iterator, get_iterator500, 
-    NexposeApiError, method_body, handle_error_response,
+    NexposeApiError, method_body, handle_error_response, api_object_getter,
 )
 from .types import (
     AssetList, Site, SiteMap, SiteId, SiteNexposeId, ErrorJson,
-    ScanEngineId,
+    ScanEngineId, Outcome, ScanTemplateId,
 )
 
-from .scan_engines import engine_map
+from .scans import scan_map, get_scan
+from .scan_engines import engine_map, get_engine
+from .asset_groups import asset_group_map, get_asset_group
+from .scan_templates import get_template
 
 log = logging.new_log(__name__)
 
@@ -35,8 +38,7 @@ def site_map(api: Api) -> SiteMap:
         ), 
     )
 
-def get_site(api: Api, site_id: SiteId) -> Site:
-    return site_map(api)[site_id]
+get_site = api_object_getter(site_map)
 
 @curry
 def get_attr(api: Api, site_id: SiteId, attr: str, default=None):
@@ -174,6 +176,7 @@ def mark_for_deletion(api: Api, site_id: SiteId):
             dict(meta)
         )
         return False, {
+            'reason': {'invalid-command', 'prevented'},
             'message': f'Cannot be marked for deletion {dict(meta)}'
         }
     log.info(f'Marking {site["name"]} to be deleted')
@@ -207,6 +210,7 @@ def delete_site(api: Api, site_id: int):
         )
 
         return False, {
+            'reason': {'invalid-command', 'prevented'},
             'message': f'Deletion not allowed for this site: {meta}'
         }
 
@@ -218,7 +222,7 @@ def delete_site(api: Api, site_id: int):
             return handle_error_response('Error in Site deletion', error_response)
 
 @curry
-def site_data(api: Api, site_id: SiteId, data_path: T.Sequence[str]):
+def get_site_data(api: Api, site_id: SiteId, data_path: T.Sequence[str]):
     '''
     Returns an iterator for the data associated with the data_path. E.g. assets,
     alerts, etc.
@@ -227,9 +231,72 @@ def site_data(api: Api, site_id: SiteId, data_path: T.Sequence[str]):
         ['sites', get_site(api, site_id)['id'], *data_path], api
     )()
 
-site_assets = site_data(data_path=['assets'])
-site_alerts = site_data(data_path=['alerts'])
-site_smtp_alerts = site_data(data_path=['alerts', 'smtp'])
-site_snmp_alerts = site_data(data_path=['alerts', 'snmp'])
-site_syslog_alerts = site_data(data_path=['alerts', 'syslog'])
+site_scans = get_site_data(data_path=['scans'])
+site_assets = get_site_data(data_path=['assets'])
+site_alerts = get_site_data(data_path=['alerts'])
+site_smtp_alerts = get_site_data(data_path=['alerts', 'smtp'])
+site_snmp_alerts = get_site_data(data_path=['alerts', 'snmp'])
+site_syslog_alerts = get_site_data(data_path=['alerts', 'syslog'])
 
+site_credentials = get_site_data(data_path=['site_credentials'])
+
+credential_services = {
+    "as400", "cifs", "cifshash", "cvs", "db2", "ftp", "http", "ms-sql", 
+    "mysql", "notes", "oracle", "oracle-service-name", "pop", "postgresql", 
+    "remote-exec", "snmp", "snmpv3", "ssh", "ssh-key", "sybase", 
+    "telnet", "kerberos",
+}
+
+@curry
+def add_site_crediential(api: Api, site_id: SiteId, name: str, 
+                         domain: str, username: str, password: str, *, 
+                         service: str = 'cifs', description: str = None,
+                         enabled: bool = True, host_restriction: str = None,
+                         port_restriction: int = None):
+    pass
+
+@curry
+def post_site_data(api: Api, site_id: SiteId, data_path: T.Sequence[str]):
+    '''
+    Returns an iterator for the data associated with the data_path. E.g. assets,
+    alerts, etc.
+    '''
+    return get_iterator500(
+        ['sites', get_site(api, site_id)['id'], *data_path], api
+    )()
+
+def new_site_scan(api: Api, site_id: SiteId, 
+                  asset_group_ids: T.Sequence[int] = None,
+                  engine_id: ScanEngineId = None,
+                  hosts: AssetList = (),
+                  name: str = None,
+                  template_id: ScanTemplateId = None) -> Outcome:
+    log.info(
+        f'Creating new site scan for site: {site_id}'
+    )
+    site = get_site(api, site_id)
+
+    ag_ids = [
+        get_asset_group(api, i)['id'] for i in (asset_group_ids or [])
+    ]
+    log.debug(f'asset group ids: {ag_ids}')
+
+    engine_id = get_engine(api, engine_id)['id'] if engine_id is not None else None
+    log.debug(f'engine id: {engine_id}')
+
+    template_id = get_template(api, template_id)['id'] if template_id is not None else None
+
+    response = api('sites', site['id'], 'scans').post(json=merge(
+        {'assetGroupIds': ag_ids} if ag_ids else {},
+        {'engineId': engine_id} if engine_id is not None else {},
+        {'hosts': hosts} if hosts else {},
+        {'name': name} if name else {},
+        {'templeId': template_id} if template_id is not None else {},
+    ))
+
+    match response:
+        case Response(status_code=201):
+            scan_map.cache_clear()
+            return True, get_scan(api, get_json(response)['id'])
+        case error_response:
+            return handle_error_response('Error in Scan creation', error_response)

@@ -17,4 +17,9 @@ Timestamp = T.NewType('Timestamp', str)
 Int = T.NewType("Int", str)
 Float = T.NewType('Float', str)
 Html = T.NewType('Html', str)
-ErrorJson = T.NewType('ErrorJson', dict)
+
+class ErrorJson(T.TypedDict):
+    reason: T.Set[str] # slugs for error
+    message: str # detailed message for failure
+
+Outcome = T.Tuple[bool, T.Any | ErrorJson]

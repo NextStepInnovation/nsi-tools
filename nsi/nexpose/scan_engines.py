@@ -10,7 +10,7 @@ from .. import yaml
 from ..rest import Api, get_json
 from .api import (
     get_iterator, get_iterator500, 
-    NexposeApiError, method_body, handle_error_response,
+    NexposeApiError, method_body, handle_error_response, api_object_getter,
 )
 from .types import (
     AssetList, 
@@ -35,3 +35,4 @@ def engine_map(api: Api) -> ScanEngineMap:
         ), 
     )
 
+get_engine = api_object_getter(engine_map)

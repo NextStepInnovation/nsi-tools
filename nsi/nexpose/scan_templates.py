@@ -10,28 +10,25 @@ from .. import yaml
 from ..rest import Api, get_json
 from .api import (
     get_iterator, get_iterator500, 
-    NexposeApiError, method_body, handle_error_response,
+    NexposeApiError, method_body, handle_error_response, api_object_getter,
 )
 from .types import (
     AssetList, 
     Site, SiteMap, SiteId, SiteNexposeId, 
     ScanEngine, ScanEngineId,
     ScanEngineMap,
+    ScanTemplate, ScanTemplateMap,
 )
 
 log = logging.new_log(__name__)
 
-get_engines = get_iterator(['scan_engines'])
+get_templates = get_iterator(['scan_templates'])
 
 @functools.cache
-def template_map(api: Api) -> ScanEngineMap:
-    log.info('Loading Nexpose scan engine map...')
-    engines = tuple(get_engines(api)())
-    log.info(f'  .. {len(engines)} engines loaded.')
-    return pipe(
-        merge(
-            {r['name']: r for r in engines},
-            {r['id']: r for r in engines},
-        ), 
-    )
+def template_map(api: Api) -> ScanTemplateMap:
+    log.info('Loading Nexpose scan template map...')
+    engines = tuple(get_templates(api)())
+    log.info(f'  .. {len(engines)} templates loaded.')
+    return {r['id']: r for r in engines}
 
+get_template = api_object_getter(template_map)

@@ -215,3 +215,14 @@ def method_body(obj_type: str, method: str, key_map: dict, site: dict,
         log.debug(line)
     return final
 
+@curry
+def api_object_getter(map_function: T.Callable[[Api], dict], api: Api, object_id):
+    object_map = map_function(api)
+    if object_id not in object_map:
+        log.error(
+            f'The object id {object_id} is not in the existing object map. Valid'
+            f' ids are:'
+        )
+        for key in object_map:
+            log.error(f'- {key}')
+    return object_map[object_id]
