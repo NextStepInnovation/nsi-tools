@@ -78,7 +78,7 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
             ips = _.get_ips_from_file(ippath)
         ip_data = _.pipe(
             ips,
-            _.map(lambda ip: (domain, username, password, ip)),
+            _.map(lambda ip: (domain, username, password, hashes, ip)),
             tuple,
         )
     elif socks_proxy_data:

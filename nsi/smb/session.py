@@ -50,6 +50,12 @@ str_command = compose_left(
     ' '.join,
 )
 
+def creds(self, domain, password, hashes, username):
+    domain = f'{domain}\\' if domain else ''
+    pw = password if password else hashes.split(':')[-1]
+    hash_pw = ' --pw-nt-hash ' if hashes else ''
+    return f" -U '{domain}{username}'%'{pw}' " + hash_pw
+
 @dataclass
 class SmbClientArgs:
     domain: str
@@ -74,11 +80,9 @@ class SmbClientArgs:
             ['domain', 'username', 'target', 'share'],
             filter(lambda a: _.is_none(getattr(self, a))),
             tuple,
-            bool,
         )
-        invalid = invalid and (
-            not (self.password or self.hashes)
-        )
+        if not (self.password or self.hashes):
+            invalid += ('password/hashes',)
         if invalid:
             raise AttributeError(
                 f'The following attributes are not set: {", ".join(invalid)}'
@@ -92,10 +96,8 @@ class SmbClientArgs:
         return command
     
     def creds(self):
-        domain = f'{self.domain}\\' if self.domain else ''
-        pw = self.password if self.password else self.hashes
-        return f" -U '{domain}{self.username}'%'{pw}'"
-
+        return creds(self.domain, self.password, self.hashes, self.username)
+    
     def command(self, command: str):
         self.validate()
         timeout = max(self.timeout, os.environ.get(TIMEOUT_KEY, 0))
@@ -132,7 +134,7 @@ def new_args(domain: str, username: str, password: str, hashes: str,
              polite: float = None,
              dry_run: bool = SmbClientArgs.dry_run) -> SmbClientArgs:
     args = SmbClientArgs(
-        domain, username, password, target, share, 
+        domain, username, password, hashes, target, share, 
         getoutput=getoutput, timeout=timeout, proxychains=proxychains,
         dry_run=dry_run, polite=polite,
     )
@@ -456,7 +458,7 @@ def test_share_perms(args: SmbClientArgs, *, rng=None, prefix='nsi'):
         log.error(f'Error for {args.target}: {pprint.pformat(errors)}')
         return perms, errors
 
-    log.debug(f'{args.username}:{args.password} on {args.target} has READ')
+    log.debug(f'{args.username}:{args.password or args.hashes} on {args.target} has READ')
     perms = perms | {'read'}
 
     # Check for file/directory writing privilieges
@@ -549,15 +551,15 @@ def line_data(regexes, content):
     )
 
 @curry
-def rpcclient(command, domain, username, password, target, *,
+def rpcclient(command, domain, username, password, hashes, target, *,
               getoutput=shell.getoutput, proxychains=False, dry_run=False):
     '''Run rpcclient with command for given credentials on target
     '''
     domain = f'{domain}\\' if domain else ''
     command = (
         ('proxychains ' if proxychains else '') +
-        f"rpcclient -c '{command}'"
-        f""" -U '{domain}{username}%{password}' {target}"""
+        f"rpcclient -c '{command}' " + creds(domain, password, hashes, username) +
+        f""" {target}"""
     )
     log.debug(f'rpcclient command: {command}')
     if dry_run:
@@ -566,13 +568,14 @@ def rpcclient(command, domain, username, password, target, *,
     return getoutput(command)
 
 @curry
-def net_rpc_group_members(group, username, password, target, *, 
+def net_rpc_group_members(group, domain, username, password, hashes, target, *, 
                           getoutput=shell.getoutput, proxychains=False,
                           dry_run=False):
     command = (
         ('proxychains ' if proxychains else '') +
-        f"net rpc group members '{group}'"
-        f" -U '{username}%{password}' -I {target}"
+        f"net rpc group members '{group}'" + 
+        creds(domain, password, hashes, username) +
+        f" -I {target}"
     )
     log.debug(f'net rpc command: {command}')
     if dry_run:
@@ -622,13 +625,13 @@ enum_enumdomgroups = compose(
 lsaenumsid = rpcclient('lsaenumsid')
 
 @curry
-def lookupsids(domain, username, password, target, sid, *,
+def lookupsids(domain, username, password, hashes, target, sid, *,
                getoutput=shell.getoutput, proxychains=False,
                dry_run=False):
     return pipe(
         rpcclient(
             f'lookupsids {sid}', domain, username,
-            password, target, getoutput=getoutput,
+            password, hashes, target, getoutput=getoutput,
             proxychains=proxychains, dry_run=dry_run,
         ),
         line_data([
@@ -639,12 +642,12 @@ def lookupsids(domain, username, password, target, sid, *,
     )
 
 @curry
-def lookupnames(domain, username, password, target, name, *,
+def lookupnames(domain, username, password, hashes, target, name, *,
                 getoutput=shell.getoutput, proxychains=False,
                 dry_run=False):
     return pipe(
         rpcclient(
-            f'lookupnames {name}', domain, username, password, target,
+            f'lookupnames {name}', domain, username, password, hashes, target,
             getoutput=getoutput, proxychains=proxychains, dry_run=dry_run,
         ),
         line_data([
@@ -656,59 +659,62 @@ def lookupnames(domain, username, password, target, name, *,
     )
 
 @curry
-def known_users(domain, username, password, target, *,
+def known_users(domain, username, password, hashes, target, *,
                 getoutput=shell.getoutput, proxychains=False,
                 dry_run=False):
     return pipe(
         KNOWN_USERS,
         ' '.join,
-        lookupnames(domain, username, password, target, getoutput=getoutput,
+        lookupnames(domain, username, password, hashes, target, 
+                    getoutput=getoutput,
                     proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
-def users_from_rid_range(domain_sid, domain, username, password, target,
+def users_from_rid_range(domain_sid, domain, username, password, hashes, target,
                          rid_range, *, getoutput=shell.getoutput,
                          proxychains=False, dry_run=False):
     return pipe(
         range(*pipe(rid_range, map(int))),
         map(lambda rid: f'{domain_sid}-{rid}'),
         ' '.join,
-        lookupsids(domain, username, password, target, getoutput=getoutput,
+        lookupsids(domain, username, password, hashes, target, getoutput=getoutput,
                    proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
-def users_from_rids(domain_sid, domain, username, password, target, rids, *,
+def users_from_rids(domain_sid, domain, username, password, hashes, target, rids, *,
                     getoutput=shell.getoutput, proxychains=False,
                     dry_run=False):
     return pipe(
         rids,
         map(lambda rid: f'{domain_sid}-{rid}'),
         ' '.join,
-        lookupsids(domain, username, password, target, getoutput=getoutput,
+        lookupsids(domain, username, password, hashes, target, getoutput=getoutput,
                    proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
-def enum_lsa(domain, username, password, target, *, getoutput=shell.getoutput,
+def enum_lsa(domain, username, password, hashes, target, *, getoutput=shell.getoutput,
              proxychains=False, dry_run=False):
     return pipe(
-        lsaenumsid(domain, username, password, target),
+        lsaenumsid(domain, username, password, hashes, target),
         line_data([r'^(?P<sid>S-\d+.*)$']),
         map(lambda d: d['sid']),
         filter(lambda sid: sid.startswith('S-1-5-21')),
         ' '.join,
-        lookupsids(domain, username, password, target, getoutput=getoutput,
+        lookupsids(domain, username, password, hashes, target, getoutput=getoutput,
                    proxychains=proxychains, dry_run=dry_run),
     )
 
 @curry
 def polenum(args: SmbClientArgs):
+    # XXX FIX
+    # Missing pth 
     command = pipe(
         [
             ('proxychains ' if args.proxychains else ''),
-            (f"polenum -d {args.domain or '.'}"
+            (f"polenum -d {args.domain or '.'}" 
              f" '{args.username}':'{args.password}'@'{args.target}'"),
         ],
         str_command,
