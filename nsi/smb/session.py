@@ -50,7 +50,7 @@ str_command = compose_left(
     ' '.join,
 )
 
-def creds(self, domain, password, hashes, username):
+def creds(domain, password, hashes, username):
     domain = f'{domain}\\' if domain else ''
     pw = password if password else hashes.split(':')[-1]
     hash_pw = ' --pw-nt-hash ' if hashes else ''
