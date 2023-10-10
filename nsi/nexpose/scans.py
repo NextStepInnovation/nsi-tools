@@ -45,8 +45,7 @@ max_assets = 1024
 class ScanStatus(T.TypedDict):
     pass
 
-def scan_ips(api: Api, site_name: str, ip_list: IpList,
-             engine_id: ScanEngineId) -> T.Iterator[ScanStatus]:
+def scan_ips(api: Api, ip_list: IpList, engine_id: ScanEngineId) -> T.Iterator[ScanStatus]:
     from .sites import site_map, new_site, new_site_scan
     log.info(
         f'Staring scan of {len(ip_list)} IP elements'

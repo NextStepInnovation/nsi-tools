@@ -55,6 +55,7 @@ class SmbClientArgs:
     domain: str
     username: str
     password: str
+    hashes: str
     target: str
     share: str
     getoutput: T.Callable[[str], str] = shell.getoutput
@@ -70,9 +71,13 @@ class SmbClientArgs:
 
     def validate(self):
         invalid = pipe(
-            ['domain', 'username', 'password', 'target', 'share'],
+            ['domain', 'username', 'target', 'share'],
             filter(lambda a: _.is_none(getattr(self, a))),
             tuple,
+            bool,
+        )
+        invalid = invalid and (
+            not (self.password or self.hashes)
         )
         if invalid:
             raise AttributeError(
@@ -85,15 +90,18 @@ class SmbClientArgs:
                 "'", ''' '"'"' '''.strip()
             )
         return command
+    
+    def creds(self):
+        domain = f'{self.domain}\\' if self.domain else ''
+        pw = self.password if self.password else self.hashes
+        return f" -U '{domain}{self.username}'%'{pw}'"
 
     def command(self, command: str):
         self.validate()
         timeout = max(self.timeout, os.environ.get(TIMEOUT_KEY, 0))
-        domain = f'{self.domain}\\' if self.domain else ''
         command_parts = [
             ("proxychains -q" if self.proxychains else ""),
-            (f'smbclient //{self.target}/"{self.share}"'
-             f" -U '{domain}{self.username}'%'{self.password}'"),
+            (f'smbclient //{self.target}/"{self.share}"' + self.creds()),
             f"-t {timeout}" if timeout else '',
             f"-c '{self.prep_command(command)}'" if command else '',
         ]
@@ -105,11 +113,9 @@ class SmbClientArgs:
     def list_command(self):
         self.validate()
         timeout = max(self.timeout, os.environ.get(TIMEOUT_KEY, 0))
-        domain = f'{self.domain}\\' if self.domain else ''
         command_parts = [
             'proxychains -q' if self.proxychains else '',
-            (f'smbclient -g -L {self.target}'
-             f" -U '{domain}{self.username}'%'{self.password}'"),
+            (f'smbclient -g -L {self.target}' + self.creds()),
             f'-t {timeout}' if timeout else '',
         ]
         return pipe(
@@ -118,12 +124,13 @@ class SmbClientArgs:
         )
 
 @curry
-def new_args(domain: str, username: str, password: str, target: str, share: str,
+def new_args(domain: str, username: str, password: str, hashes: str, 
+             target: str, share: str,
              *, getoutput=SmbClientArgs.getoutput, 
              timeout: int = SmbClientArgs.timeout, 
              proxychains: bool = SmbClientArgs.proxychains, 
              polite: float = None,
-             dry_run: bool = SmbClientArgs.dry_run):
+             dry_run: bool = SmbClientArgs.dry_run) -> SmbClientArgs:
     args = SmbClientArgs(
         domain, username, password, target, share, 
         getoutput=getoutput, timeout=timeout, proxychains=proxychains,
@@ -753,7 +760,7 @@ rpc_password_policy = compose(
 
 class null:
     pass
-null_args = new_args('', '', '')
+null_args = new_args('', '', '', '')
 null.enum_shares = compose_left(
     null_args,
     enum_shares,

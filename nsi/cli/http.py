@@ -8,6 +8,7 @@ import pprint
 import json
 import sys
 import urllib; from urllib.parse import ParseResult
+import urllib.parse
 import random
 import typing as T
 
@@ -102,7 +103,10 @@ def ip_port_ssl(ssl: bool, port: int, path: Path):
                 )
 
 @curry
-def host_dir(output_dir_path: str|Path, ip):
+def host_dir(output_dir_path: str|Path, ip_or_url):
+    dir_path = Path(output_dir_path)
+    if ip_or_url.startswith('http'):
+        return dir_path / urllib.parse.urlparse(ip_or_url)
     path = Path(output_dir_path, f'{ip}')
     return path
 

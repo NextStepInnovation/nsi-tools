@@ -24,7 +24,7 @@ log = logging.new_log(__name__)
     ),
     help=('Output file path'),
 )
-@common.cred_options
+@common.impacket_cred_options
 @common.ssh_options
 @click.option(
     '--max-workers', type=int, default=5,
@@ -63,7 +63,7 @@ log = logging.new_log(__name__)
     help=('Log output level (default: info)'),
 )
 def enumerate_smb_shares(ippath, output_dir, target, username, password, 
-                         domain, ssh, max_workers, echo, force, 
+                         domain, hashes, ssh, max_workers, echo, force, 
                          dry_run, proxychains, socks_proxy_data, loglevel):
     logging.setup_logging(loglevel)
     echo = echo or loglevel == 'debug'
@@ -140,9 +140,9 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
         )
 
     @_.curry
-    def enum_shares_and_output(domain, username, password, ip):
+    def enum_shares_and_output(domain, username, password, hashes, ip):
         partial_args = smb.session.new_args(
-            domain, username, password, ip,
+            domain, username, password, hashes, ip,
             getoutput=getoutput,
             proxychains=proxychains,
             dry_run=dry_run,

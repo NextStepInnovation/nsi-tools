@@ -261,7 +261,7 @@ def nikto(host: str, port: int, ssl: bool, *,
         url = f'{url}:{port}'
 
     agent = data.random_user_agent()
-    command = f"nikto -useragent '{agent}' -host {url}"
+    command = f"nikto -nointeractive -useragent '{agent}' -host {url}"
     if path is not None:
         command = f'{command} -root "{path}"'
 

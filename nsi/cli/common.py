@@ -166,7 +166,7 @@ cred_options = compose(
 impacket_cred_options = compose(
     cred_options,
     click.option(
-        '-h', '--hashes',
+        '-H', '--hashes',
         help=('NTLM hash with which to authenticate.'),
     ),
 )
