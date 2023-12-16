@@ -107,7 +107,7 @@ def host_dir(output_dir_path: str|Path, ip_or_url):
     dir_path = Path(output_dir_path)
     if ip_or_url.startswith('http'):
         return dir_path / urllib.parse.urlparse(ip_or_url)
-    path = Path(output_dir_path, f'{ip}')
+    path = Path(output_dir_path, f'{ip_or_url}')
     return path
 
 @curry

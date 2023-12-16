@@ -52,7 +52,7 @@ str_command = compose_left(
 
 def creds(domain, password, hashes, username):
     domain = f'{domain}\\' if domain else ''
-    pw = password if password else hashes.split(':')[-1]
+    pw = password if password else (hashes.split(':')[-1] if hashes else '')
     hash_pw = ' --pw-nt-hash ' if hashes else ''
     return f" -U '{domain}{username}'%'{pw}' " + hash_pw
 
@@ -81,8 +81,8 @@ class SmbClientArgs:
             filter(lambda a: _.is_none(getattr(self, a))),
             tuple,
         )
-        if not (self.password or self.hashes):
-            invalid += ('password/hashes',)
+        # if not (self.password or self.hashes):
+        #     invalid += ('password/hashes',)
         if invalid:
             raise AttributeError(
                 f'The following attributes are not set: {", ".join(invalid)}'

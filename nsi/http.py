@@ -210,6 +210,7 @@ def get_ssl_port(ssl, no_ssl, port):
 
 @curry
 def dirb(host: str, port: int, ssl: bool, *, timeout=DIRB_TIMEOUT,
+         path: str = None,
          getoutput=getoutput, dry_run=False):
     if not host.startswith('http'):
         proto = f'http{"s" if ssl else ""}'

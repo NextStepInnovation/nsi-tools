@@ -74,11 +74,16 @@ directories.
     '''
 )
 @click.option(
+    '--do-zero', is_flag=True, help='''
+    Traverse zero-size directories
+    '''
+)
+@click.option(
     '--loglevel', default='info',
     help=('Log output level (default: info)'),
 )
 def metadata(directories, min_mtime, sub_dir, output_dir, ssh, echo, dry_run, skip_dir, 
-             max_examples, case_sensitive, keep_empty, loglevel):
+             max_examples, case_sensitive, keep_empty, do_zero, loglevel):
     logging.setup_logging(loglevel)
     log.debug(directories)
 
@@ -139,7 +144,7 @@ def metadata(directories, min_mtime, sub_dir, output_dir, ssh, echo, dry_run, sk
                 f'YAML output found {path}... skipping'
             )
             return None
-        if meta_path.stat().st_size == 0:
+        if meta_path.stat().st_size == 0 and not do_zero:
             log.warning(
                 f'Directory {meta_path} has zero size... skipping'
             )
