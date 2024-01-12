@@ -42,6 +42,7 @@ setup(
         'bs4',
         'chardet',
         'click',
+        'colorama',
         'coloredlogs',
         'ifcfg',
         'impacket',
