@@ -16,6 +16,7 @@ import json
 import networkx as nx
 import xmljson
 
+from .toolz import *
 from . import toolz as _
 from . import yaml
 from . import parallel
@@ -24,7 +25,7 @@ from .graph import network as network_graph
 from . import data
 from . import logging
 
-from nsi.toolz import *
+log = logging.new_log(__name__)
 
 def cme_command(command: str, target: str, raw_options: str, **options) -> str:
     args = pipe(
@@ -60,4 +61,18 @@ def crackmapexec(command: str, target: Target, *,
 
 smb_crackmapexec = crackmapexec('smb')
 
-log = logging.new_log(__name__)
+
+smb_line_re = re.compile(
+    r'SMB\s+(?P<ip>\d+\.\d+\.\d+\.\d+)\s+445\s+(?P<hostname>.*?)\s+'
+    r'\[\*\]\s+(?P<os>.*?)\s+'
+    r'\(name:(?P<name>.*?)\)\s+'
+    r'\(domain:(?P<domain>.*?)\)\s+'
+    r'\(signing:(?P<signing>(True|False))\)\s+'
+    r'\(SMBv1:(?P<v1>(True|False))\)$'
+)
+
+parse_smb = compose_left(
+    slurplines,
+    map(groupdict(smb_line_re)),
+    filter(None),
+)

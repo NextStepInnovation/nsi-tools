@@ -104,14 +104,16 @@ def bloodhound_data_from_paths(paths: T.List[Path]):
     return pipe(
         merge(
             {'computers': [], 'domains': [], 'groups': [],
-                'sessions': [], 'users': []},
+             'sessions': [], 'users': []},
             pipe(
                 paths,
                 map(parse_json),
                 error_raise(map(lambda d: (
                     d['meta']['type'], get_data(d, d['meta']['type'])
                 ))),
-                dict,
+                groupby(first),
+                valmap(map_t(second)),
+                valmap(concat_t),
             ),
         ),
         bloodhound_data,

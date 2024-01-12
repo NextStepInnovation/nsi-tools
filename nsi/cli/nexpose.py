@@ -7,6 +7,7 @@ from pathlib import Path
 import typing as T
 
 import click
+from colorama import Fore, Style
 
 from .. import logging
 from .. import nexpose
@@ -245,10 +246,18 @@ def report_stats(xml_paths, output_path):
 
 @nexpose_command.command(
     help='''
-    Start a Nexpose scan of a set of assets
+    Run Nexpose scan of a set of assets, output the XML report
     '''
 )
 @config_option
+@click.option(
+    '-i', '--input-path', type=click.Path(
+        exists=True, dir_okay=False, resolve_path=True,
+    ),
+    help='''
+    Path with list of IP addresses/networks to scan, one per line
+    '''
+)
 @click.option(
     '-n', '--name', help='''
     Name of report. If not given, will be ['-'.join(sites)]-nexpose-data
@@ -275,7 +284,7 @@ def report_stats(xml_paths, output_path):
     being written to the filesystem.
     '''
 )
-def start_scan(config_path, name, output_path, force, keep):
+def scan_ips(config_path, name, output_path, force, keep):
     log.info('Initializing Nexpose scan')
 
     config = get_config(config_path)
@@ -341,16 +350,51 @@ def list_scan_engines(config_path):
     api = nexpose.api.new_api(**config['nexpose'])
 
     engine_map = get_api_obj(config, nexpose.scan_engines.engine_map, api)
-    site_names = pipe(engine_map, keyfilter(is_str), sorted)
+    engine_names = pipe(engine_map, keyfilter(is_str), sorted)
 
+    date_str = lambda active, date: (
+        (Style.BRIGHT + Fore.RED if not active else '') + f' ({date})' if date else ''
+    )
+    active_str = lambda active, date: (
+        (Style.BRIGHT + Fore.YELLOW + f'Active{date_str(active, date)}' if active else 
+        Fore.LIGHTBLACK_EX + f'Not Responding{date_str(active, date)}') + Style.RESET_ALL
+    )
     
     pipe(
-        site_names,
+        engine_names,
         map(lambda n: (n, engine_map[n])),
         vmap(lambda n, d: (
-            n, d['id']
+            n, d['id'], d['status'] == 'active', d.get('lastRefreshedDate')
         )),
-        vmap(lambda n, id: f'- {n} (id: {id})'),
+        vmap(lambda n, id, active, date: (
+            f'- {n} (id: {id}) {active_str(active, date)}'
+        )),
+        map(log.info),
+        tuple,
+    )
+
+@nexpose_command.command(
+    help='''
+    Get a list of scan templates
+    '''
+)
+@config_option
+def list_scan_templates(config_path):
+    log.info('Getting list of scan templates:')
+    config = get_config(config_path)
+    api = nexpose.api.new_api(**config['nexpose'])
+
+    template_map = get_api_obj(config, nexpose.scan_templates.template_map, api)
+
+    pipe(
+        template_map,
+        items,
+        vmap(lambda key, t: (
+            key, t['name']
+        )),
+        vmap(lambda key, name: (
+            f'- {name} (id: {key})'
+        )),
         map(log.info),
         tuple,
     )
@@ -374,9 +418,9 @@ def new_site(config_path):
         site_names,
         map(lambda n: (n, engine_map[n])),
         vmap(lambda n, d: (
-            n, d['id']
+            n, d['id'],
         )),
-        vmap(lambda n, id: f'- {n} (id: {id})'),
+        vmap(lambda n, id, active, date: f'- {n} (id: {id})'),
         map(log.info),
         tuple,
     )

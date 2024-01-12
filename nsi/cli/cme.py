@@ -37,9 +37,6 @@ def cme_command(loglevel):
     logging.setup_logging(loglevel)
 
 
-
-
-
 @cme_command.command(
     help='''
     CrackMapExec SMB command

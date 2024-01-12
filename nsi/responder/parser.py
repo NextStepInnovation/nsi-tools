@@ -3,7 +3,7 @@ import re
 import typing as T
 from ipaddress import ip_address
 
-from .toolz import *
+from ..toolz import *
 
 '''
 03/08/2022 07:59:51 AM - [*] [NBT-NS] Poisoned answer sent to ::ffff:10.240.12.52 for name WORKGROUP (service: Local Master Browser)

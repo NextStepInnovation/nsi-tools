@@ -2,8 +2,8 @@ from pathlib import Path
 
 import ifcfg
 
-import nsi
-from nsi.toolz import *
+from .. import logging
+from ..toolz import *
 
-log = nsi.logging.new_log(__name__)
+log = logging.new_log(__name__)
 
