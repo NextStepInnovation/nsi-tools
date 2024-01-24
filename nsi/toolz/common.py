@@ -291,14 +291,15 @@ def to_str(content: Any):
             )
     return str(content)
 
+@curry
 def to_bytes(content, encoding='utf-8', errors='ignore'):
     '''Convert this object as bytes, encoding if necessary
     '''
     match type(content):
-        case builtins.str:
-            return content.encode(encoding, errors)
         case builtins.bytes:
             return content
+        case builtins.str:
+            return content.encode(encoding, errors)
     return str(content).encode(encoding, errors)
 
 def is_dict(d):
