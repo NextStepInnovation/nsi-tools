@@ -7,8 +7,10 @@ import pyperclip
 
 from .common import (
     is_dict, pipe, curry, map, filter, concatv, strip,
-    is_seq, is_str, to_str, merge,
+    is_seq, is_str, to_str, merge, compose_left,
 )
+
+from .. import logging
 
 __all__ = [
     # text_processing
@@ -17,7 +19,10 @@ __all__ = [
     'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi', 'clip_text', 'clip_lines',
     'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
     'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 'table_lines',
+    'make_table', 'ascii_table',
 ]
+
+log = logging.new_log(__name__)
 
 # ----------------------------------------------------------------------
 #
@@ -242,3 +247,78 @@ def table_lines(columns: T.Sequence[str], align: str = None):
         align if align else (('|:--' * len(columns)) + '|')
     ) + '\n'
     return join_lines('\n', pre=pre, post='\n')
+
+@curry
+def make_table(columns: T.Sequence[str], 
+               col_map=None, columns_as_code: T.Sequence[int|str] = None, 
+               pad: bool = False):
+    '''Functional markdown table maker. Given columns (i.e. row dict keys) and
+    map from those keys to final header names, return table-making function that
+    takes an iterable of rows and produces a markdown table.
+
+    Examples:
+
+    >>> pipe(
+    ...    [{'a': 1, 'b': 2}, {'a': 3, 'b': 4}], 
+    ...    make_table(['a', 'b'], {'a': 'ColA', 'b': 'ColB'}),
+    ...    print,
+    ... )
+    | ColA | ColB |
+    |:-----|:-----|
+    | 1 | 2 |
+    | 3 | 4 |
+    '''
+    def maker(rows):
+        rows = tuple(rows)
+        if not rows:
+            return ''
+
+        nonlocal columns, col_map
+        if columns is None:
+            columns = tuple(rows[0].keys())
+        if col_map is None:
+            header = columns
+        else:
+            header = [col_map[c] for c in columns]
+
+        if is_seq(rows[0]):
+            value_f = lambda _i, r: [r[i] for i, _c in enumerate(columns)]
+        else:
+            value_f = lambda _i, r: [r[c] for c in columns]
+
+        if pad:
+            max_col_widths = [0 for v in header]
+            for row in [header] + [r for r in rows]:
+                for j, value in enumerate(row):
+                    width = len(str(value))
+                    if width > max_col_widths[j]:
+                        max_col_widths[j] = width
+
+            header = [str(h).center(max_col_widths[j]) for j, h in enumerate(header)]
+            old_value_f = value_f
+            value_f = lambda i, row: [
+                str(v).ljust(max_col_widths[j]) 
+                for j, v in enumerate(old_value_f(i, row))
+            ]
+            
+        yield '| ' + ' | '.join(header) + ' |'
+        yield '|:' + pipe(
+            header,
+            map(lambda h: '-'*(len(h) + 1)),
+            '|:'.join,
+        )+ '|'
+        # yield '|:--'*len(header) + '|'
+        for i, row in enumerate(rows):
+            try:
+                values = value_f(i, row)
+            except:
+                log.exception(row)
+                raise
+            yield '| ' + pipe(
+                values,
+                map(str),
+                ' | '.join
+            ) + ' |'
+
+    return compose_left(maker, '\n'.join)
+ascii_table = make_table(pad=True)

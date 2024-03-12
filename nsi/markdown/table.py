@@ -1,5 +1,6 @@
 import re
 import logging
+import pprint
 
 from markdown import Extension
 from markdown.preprocessors import Preprocessor
@@ -92,7 +93,7 @@ def parse_tables(lines):
                         merge,
                     ),
                 }
-                log.error(pprint.pformat(table['header']))
+                # log.error(pprint.pformat(table['header']))
 
             elif tr_match:
                 match_dict = tr_match.groupdict()

@@ -399,7 +399,8 @@ def flatdict(obj: Union[dict, Any], keys=()):
     else:
         yield keys + (obj,)
 
-def as_tuple(func):
+@curry
+def as_tuple(func, filter_none: bool = False):
     '''
     Function decorator that causes a generator function to return a tuple of its
     generated values.
@@ -413,10 +414,23 @@ def as_tuple(func):
     ...
     >>> f() == (1, 2)
     True
+    >>> @as_tuple(filter_none=True)
+    ... def f():
+    ...     yield 1
+    ...     yield []
+    ...     yield 2
+    ...     yield None
+    ...
+    >>> f() == (1, 2)
+    True
     '''
     @functools.wraps(func)
     def wrapper(*a, **kw):
-        return tuple(func(*a, **kw))
+        return pipe(
+            func(*a, **kw),
+            filter(None) if filter_none else noop,
+            tuple,
+        )
     return wrapper
 
 def as_dict(func):
@@ -436,7 +450,11 @@ def as_dict(func):
     '''
     @functools.wraps(func)
     def wrapper(*a, **kw):
-        return merge(func(*a, **kw))
+        return pipe(
+            func(*a, **kw),
+            filter(None),
+            merge,
+        )
     return wrapper
 
 # ---------------------------
