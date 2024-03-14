@@ -18,6 +18,11 @@ def setup_logging(loglevel: str, **config_kw):
         'datefmt': datefmt,
         'fmt': fmt,
         'style': '{',
+        'field_styles': merge(
+            coloredlogs.DEFAULT_FIELD_STYLES, {
+                'name': {'bold': True, 'color': 'blue'}
+            }
+        ),
     }, config_kw)
     coloredlogs.install(**kw)
 
