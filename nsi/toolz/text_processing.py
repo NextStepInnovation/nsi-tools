@@ -2,6 +2,7 @@ import typing as T
 from typing import Union, Iterable
 import functools
 import re
+import pprint
 
 import pyperclip
 
@@ -14,9 +15,11 @@ __all__ = [
     # text_processing
     'clipboard_copy', 'clipboard_paste', 'copy', 'paste',
     'difflines', 'escape_row', 'intlines',
-    'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 'strip_comments', 'strip_comments_from_line', 'noansi', 'clip_text', 'clip_lines',
-    'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 'html_list',
-    'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 'table_lines',
+    'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 
+    'strip_comments', 'strip_comments_from_line', 'pformat', 'noansi', 'clip_text', 
+    'clip_lines', 'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 
+    'html_list', 'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 
+    'table_lines',
 ]
 
 # ----------------------------------------------------------------------
@@ -156,7 +159,9 @@ def html_list(items):
 # Text formatting convenience functions
 #
 # ----------------------------------------------------------------------
-
+@functools.wraps(pprint.pformat)
+def pformat(obj: T.Any, **kw):
+    return pprint.pformat(obj, **kw)
 
 def noansi(text: str):
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
