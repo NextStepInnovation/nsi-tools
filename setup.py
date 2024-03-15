@@ -64,7 +64,7 @@ setup(
         'regex',
         'requests',
         'requests[socks]',
-        'ruamel.yaml',
+        'ruamel.yaml<0.18.0',
         'scapy',
         'sqlalchemy',
         'strip-ansi',
