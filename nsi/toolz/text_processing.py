@@ -163,6 +163,7 @@ def html_list(items):
 # Text formatting convenience functions
 #
 # ----------------------------------------------------------------------
+@curry
 @functools.wraps(pprint.pformat)
 def pformat(obj: T.Any, **kw):
     return pprint.pformat(obj, **kw)
