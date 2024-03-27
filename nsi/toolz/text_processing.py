@@ -18,9 +18,9 @@ __all__ = [
     'clipboard_copy', 'clipboard_paste', 'copy', 'paste',
     'difflines', 'escape_row', 'intlines',
     'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 
-    'strip_comments', 'strip_comments_from_line', 'pformat', 'noansi', 'clip_text', 
-    'clip_lines', 'strip_comments_from_lines', 'xlsx_to_clipboard', 'xorlines', 
-    'html_list', 'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 
+    'strip_comments', 'strip_comments_from_line', 'pformat', 'pfint', 'noansi', 
+    'clip_text', 'clip_lines', 'strip_comments_from_lines', 'xlsx_to_clipboard', 
+    'xorlines', 'html_list', 'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 
     'table_lines',
 ]
 
@@ -163,10 +163,12 @@ def html_list(items):
 # Text formatting convenience functions
 #
 # ----------------------------------------------------------------------
-@curry
+
 @functools.wraps(pprint.pformat)
+@curry
 def pformat(obj: T.Any, **kw):
     return pprint.pformat(obj, **kw)
+pfint = pformat(underscore_number=True)
 
 def noansi(text: str):
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
@@ -281,10 +283,11 @@ def make_table(columns: T.Sequence[str],
         nonlocal columns, col_map
         if columns is None:
             columns = tuple(rows[0].keys())
-        if col_map is None:
-            header = columns
-        else:
+
+        if col_map:
             header = [col_map[c] for c in columns]
+        else:
+            header = columns
 
         if is_seq(rows[0]):
             value_f = lambda _i, r: [r[i] for i, _c in enumerate(columns)]
@@ -293,7 +296,7 @@ def make_table(columns: T.Sequence[str],
 
         if pad:
             max_col_widths = [0 for v in header]
-            for row in [header] + [r for r in rows]:
+            for row in [header] + [[row[c] for c in columns] for row in rows]:
                 for j, value in enumerate(row):
                     width = len(str(value))
                     if width > max_col_widths[j]:

@@ -69,7 +69,7 @@ __all__ = [
     'sort_by', 'sorted', 'split', 'splitlines', 'starmap', 'startswith',
     'strip', 'to_io', 'to_bytes', 'to_str', 'upper', 'val',
     'vcall', 'vcallif', 'vdo', 'vfilter', 'vfind',
-    'vgroupby', 'vindex', 'vitemmap', 'vkeymap', 'vmap',
+    'vgroupby', 'vindex', 'vitemmap', 'vkeymap', 'vmap', 'mapget', 'mget',
     'vmapcat', 'vmapdo', 'vmapif', 'vseti', 'vseti_t',
     'vvalmap', 'wrap_text', 'maybe_mean', 'maybe_median', 'maybe_mode',
     'most_common',
@@ -644,6 +644,21 @@ def vmap(func, seq):
     )
 
 starmap = vmap
+
+@curry
+def mapget(key, seq, *, default=None):
+    '''map(get) combo
+
+    Example:
+
+    >>> pipe([{'a': 1}, {'a': 2}], mget('a'), sum) == 3
+    True
+    '''
+    return pipe(
+        seq,
+        map(get(key, default=default)),
+    )
+mget = mapget
 
 @curry
 def vfilter(func, seq):
