@@ -21,7 +21,7 @@ __all__ = [
     'strip_comments', 'strip_comments_from_line', 'pformat', 'pfint', 'noansi', 
     'clip_text', 'clip_lines', 'strip_comments_from_lines', 'xlsx_to_clipboard', 
     'xorlines', 'html_list', 'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 
-    'table_lines',
+    'table_lines', 'make_table', 'ascii_table',
 ]
 
 log = logging.new_log(__name__)
@@ -291,12 +291,14 @@ def make_table(columns: T.Sequence[str],
 
         if is_seq(rows[0]):
             value_f = lambda _i, r: [r[i] for i, _c in enumerate(columns)]
+            enum_row = lambda r: r
         else:
-            value_f = lambda _i, r: [r[c] for c in columns]
+            enum_row = lambda r: [r[c] for c in columns]
+            value_f = lambda _i, r: enum_row(r)
 
         if pad:
             max_col_widths = [0 for v in header]
-            for row in [header] + [[row[c] for c in columns] for row in rows]:
+            for row in [header] + [enum_row(row) for row in rows]:
                 for j, value in enumerate(row):
                     width = len(str(value))
                     if width > max_col_widths[j]:

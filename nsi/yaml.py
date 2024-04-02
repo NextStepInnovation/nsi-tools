@@ -5,6 +5,7 @@ import typing as T
 from collections.abc import Mapping, Iterable
 
 import ruamel.yaml
+import ruamel.yaml.scalarstring
 from ruamel.yaml.comments import CommentedMap
 from pymaybe import Nothing
 
@@ -40,6 +41,23 @@ def maybe_read_yaml(path: T.Union[str, Path]):
         log.exception(f'Error reading YAML path: {path}')
         return Nothing()
 
+def add_literal_scalar(obj):
+    match obj:
+        case dct if _.is_dict(dct):
+            return {
+                k: add_literal_scalar(v) for k, v in dct.items()
+            }
+        case seq if _.is_seq(seq):
+            return tuple(
+                add_literal_scalar(v) for v in seq
+            )
+        case string if _.is_str(seq):
+            if '\n' in string:
+                return ruamel.yaml.scalarstring.LiteralScalarString(string)
+            return string
+        case otherwise:
+            return otherwise
+
 @_.ensure_paths
 @_.curry
 def write_yaml(path: T.Union[str, Path], obj: T.Any):
@@ -57,7 +75,9 @@ def write_yaml(path: T.Union[str, Path], obj: T.Any):
             )
         case final_object: pass
 
+    final_object = add_literal_scalar(final_object)
     with path.open('w') as wfp:
-        success = dump(obj, wfp)
+        # success = dump(obj, wfp)
+        success = dump(final_object, wfp)
     return success
 

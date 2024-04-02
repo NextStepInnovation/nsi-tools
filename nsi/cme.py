@@ -73,6 +73,7 @@ smb_line_re = re.compile(
 
 parse_smb = compose_left(
     slurplines,
+    map(noansi),
     map(groupdict(smb_line_re)),
     filter(None),
 )
