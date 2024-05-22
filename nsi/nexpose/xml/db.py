@@ -90,7 +90,7 @@ class NexposeData:
         return f'{self.typed_dict.__name__}({attrs_str})'
 
     @classmethod
-    def from_dict(cls, data: T.TypedDict):
+    def from_dict(cls, data: dict):
         self = cls()
 
         data = merge(data, self.prepare(data))
@@ -113,10 +113,10 @@ class NexposeData:
     def output_dict(self, data: dict):
         return data
 
-    def prepare(self, data: T.TypedDict) -> dict:
+    def prepare(self, data: dict) -> dict:
         return {}
 
-    def ingest(self, data: T.TypedDict):
+    def ingest(self, data: dict):
         pass
 
 
