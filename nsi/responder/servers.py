@@ -13,7 +13,8 @@ import dns.message
 import dns.exception
 
 from .. import logging
-from ..toolz import *
+#from ..toolz import *
+from ..toolz import dict_md5, pipe, splitlines
 from .common import (
     has_ipv6, default_interface, IPV6, IPV4, Configuration,
     respond_to_ip, respond_to_name, client_ip, query_num_to_name,
