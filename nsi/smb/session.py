@@ -337,7 +337,7 @@ def smb_results(output: SmbOutput):
 
 @curry
 def smbclient_ls(args: SmbClientArgs, path: Path, **repl_args):
-    command = f'ls "{path}"'
+    command = 'ls' + (f" {path}" if path else '')
     try:
         return pipe(
             smbclient(args, command, **repl_args),
@@ -449,7 +449,7 @@ def smbclient_rm(args: SmbClientArgs, path: Path, **repl_args):
 def test_share_perms(args: SmbClientArgs, *, rng=None, prefix='nsi'):
     rng = rng or random.Random(0)
 
-    results = smbclient_ls(args, "/")
+    results = smbclient_ls(args, "")
     errors = smb_errors(results)
     
     perms = set()
