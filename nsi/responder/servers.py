@@ -14,7 +14,9 @@ import dns.exception
 
 from .. import logging
 #from ..toolz import *
-from ..toolz import dict_md5, pipe, splitlines
+from ..toolz import (
+    dict_md5, pipe, splitlines, map,
+)
 from .common import (
     has_ipv6, default_interface, IPV6, IPV4, Configuration,
     respond_to_ip, respond_to_name, client_ip, query_num_to_name,
@@ -43,7 +45,7 @@ class PoisonerHandler(BaseRequestHandler, ConfigMixin):
     def handle(self):
         try:
             req_data, sock = self.request
-            log.debug(f'Query data: {req_data}')
+            log.info(f'Query data: {req_data}')
 
             try:
                 message = self.dns_message_class(req_data)
@@ -80,7 +82,7 @@ class PoisonerHandler(BaseRequestHandler, ConfigMixin):
 
                 qtype = question['type']
 
-                log.info(f'Got {qtype} request for name: {name} from IP: {ip}')
+                log.info(f'{qtype} request for name: {name} from IP: {ip}')
 
                 packet: packets.Packet = None
 
@@ -96,6 +98,7 @@ class PoisonerHandler(BaseRequestHandler, ConfigMixin):
                         continue
 
                 if packet:
+                    log.info(packet)
                     continue
                     sock.sendto(packet.to_bytes(), self.client_address)
         except:

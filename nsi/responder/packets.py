@@ -7,6 +7,7 @@ from dataclasses import (
 from collections import OrderedDict
 
 import ifcfg
+import scapy.layers.llmnr as llmnr
 
 from .. import logging
 from ..toolz import *
