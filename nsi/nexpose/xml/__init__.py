@@ -2,7 +2,7 @@
 Tools for dealing with Nexpose XML reports
 '''
 from . import (
-    parser, db, stats,
+    types, parser, db, stats,
 )
 
 from .parser import (

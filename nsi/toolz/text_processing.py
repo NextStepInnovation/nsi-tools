@@ -7,7 +7,7 @@ import pprint
 import pyperclip
 
 from .common import (
-    is_dict, pipe, curry, map, filter, concatv, strip,
+    is_dict, pipe, curry, map, filter, concatv, strip, vmap,
     is_seq, is_str, to_str, merge, compose_left,
 )
 
@@ -257,7 +257,7 @@ def table_lines(columns: T.Sequence[str], align: str = None):
 
 @curry
 def make_table(columns: T.Sequence[str], 
-               col_map=None, columns_as_code: T.Sequence[int|str] = None, 
+               col_map=None, columns_as_code: T.Sequence[int] = None, 
                pad: bool = False):
     '''Functional markdown table maker. Given columns (i.e. row dict keys) and
     map from those keys to final header names, return table-making function that
@@ -279,7 +279,7 @@ def make_table(columns: T.Sequence[str],
         rows = tuple(rows)
         if not rows:
             return ''
-
+        
         nonlocal columns, col_map
         if columns is None:
             columns = tuple(rows[0].keys())
@@ -290,10 +290,11 @@ def make_table(columns: T.Sequence[str],
             header = columns
 
         if is_seq(rows[0]):
-            value_f = lambda _i, r: [r[i] for i, _c in enumerate(columns)]
+            value_f = lambda _i, r: [(r[i] if i < len(r) else '') 
+                                     for i, _c in enumerate(columns)]
             enum_row = lambda r: r
         else:
-            enum_row = lambda r: [r[c] for c in columns]
+            enum_row = lambda r: [r.get(c, '') for c in columns]
             value_f = lambda _i, r: enum_row(r)
 
         if pad:
@@ -326,6 +327,8 @@ def make_table(columns: T.Sequence[str],
                 raise
             yield '| ' + pipe(
                 values,
+                enumerate,
+                vmap(lambda i, v: f'`{v}`' if i in columns_as_code else v),
                 map(str),
                 ' | '.join
             ) + ' |'

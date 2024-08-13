@@ -47,12 +47,15 @@ class Api:
     session: requests.Session
     method_kwargs: PMap
     ns_keywords: NSKeywords
+    is_json_patch: bool
 
     def __init__(self, base: BaseURL, session: requests.Session, *,
-                 ns_keywords: NSKeywords = None, **method_kwargs):
+                 ns_keywords: NSKeywords = None, is_json_patch: bool = True,
+                 **method_kwargs):
         self.base = urllib.parse.urlparse(base)
         self.session = session
         self.ns_keywords = pipe(ns_keywords or (), tuple)
+        self.is_json_patch = is_json_patch
         self.method_kwargs = pmap(method_kwargs)
 
     def url(self, *parts, **query) -> str:
@@ -81,6 +84,7 @@ class Api:
         return Endpoint(
             self, parts, 
             ns_keywords=self.ns_keywords, 
+            is_json_patch=self.is_json_patch,
             **merge(self.method_kwargs, kwargs),
         )
 
@@ -129,10 +133,12 @@ class Endpoint:
     patch: Method
 
     def __init__(self, api: Api_T, url_parts: T.Sequence[str | int], *, 
-                 ns_keywords: T.Sequence[str] = None, **kwargs):
+                 ns_keywords: T.Sequence[str] = None, is_json_patch: bool = True,
+                 **kwargs):
         self.api = api
         self.url_parts = tuple(url_parts)
         self.ns_keywords = ns_keywords or ()
+        self.is_json_patch = is_json_patch
 
         self.orig_kwargs = kwargs
 
@@ -193,6 +199,13 @@ class Endpoint:
             log.debug(
                 f'{name.upper()} --> args: {args} kw: {kwargs}'
             )
+            match name.lower(), self.is_json_patch:
+                case 'patch', True:
+                    kwargs['headers'] = merge(
+                        kwargs.get('headers', {}), {
+                            'Content-Type': 'application/json-patch+json',
+                        }
+                    )
             return error_raise(session_method)(*args, **kwargs)
         return caller
 

@@ -1,6 +1,10 @@
 import typing as T
 from pathlib import Path
 
+from ...toolz import (
+    pipe, sort_by, filter, get, last, map,
+)
+
 from ..types import (
     Float, Int, Html, Timestamp, Url, Ip, 
     TagName, TagId, TagList, IpList, RegexList,
@@ -15,6 +19,28 @@ class Fingerprint(T.TypedDict):
     vendor: str
     version: str
     arch: str
+
+def fingerprint_os(fp: Fingerprint, with_certainty: bool = True) -> str:
+    vendor, product, version, device_class, certainty = pipe(
+        ['vendor', 'product', 'version', 'device_class', 'certainty'],
+        map(fp.get)
+    )
+    parts = (
+        vendor if vendor and vendor != 'Microsoft' else '',
+        product,
+        version,
+        f"({device_class})" if device_class else '',
+        (f"[{(int(float(certainty)*100))}% certain]" 
+         if (certainty and float(certainty) < 1.0 and with_certainty) 
+         else ''),
+    )
+
+    return pipe(
+        parts,
+        filter(None),
+        lambda parts: parts if parts else ('Unknown OS',),
+        ' '.join,
+    )
 
 class Software(T.TypedDict):
     certainty: Float
@@ -73,6 +99,15 @@ class Node(T.TypedDict):
     status: str
     tests: T.Sequence[Test]
 
+def node_os(node: Node, with_certainty: bool = True) -> str:
+    if not node['fingerprints']:
+        return 'Unknown OS'
+    best_guess = pipe(
+        node['fingerprints'],
+        sort_by(get('certainty')),
+        last,
+    )
+    return fingerprint_os(best_guess)
 
 class Exploit(T.TypedDict):
     id: Int

@@ -1,3 +1,8 @@
+# Because of the obnoxious cryptography warning about TripleDES. :(
+import warnings
+warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+warnings.filterwarnings(action='ignore', module='.*scapy.*')
+
 from . import (
     toolz, 
     logging, 
