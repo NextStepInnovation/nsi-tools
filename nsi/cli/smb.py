@@ -90,10 +90,15 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
             socks_proxy_data,
             _.slurplines,
             _.map(_.groupdict(socks_re)),
-            _.map(_.get(['domain', 'user', '_x_', 'ip'], default='')),
+            _.map(_.get(['domain', 'user', 'ip'], default='')),
             _.filter(all),
+            _.map(lambda t: (t[0], t[1], '', '', t[2])),
             tuple,
         )
+        log.info(
+            f'Found {len(ip_data)} IPs to search in SOCKS proxy data'
+        )
+        log.debug(ip_data)
     else:
         log.error('No IP information given')
         raise click.UsageError(
