@@ -1,4 +1,9 @@
 [tool.pyright]
 
 reportShadowedImports = false
-
+reportArgumentType = false
+reportAssignmentType = false
+reportOperatorIssue = false
+reportAttributeAccessIssue = false
+reportCallIssue = false
+reportPossiblyUnboundVariable = false

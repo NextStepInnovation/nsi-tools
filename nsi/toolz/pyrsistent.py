@@ -12,7 +12,7 @@ from .common import (
 
 __all__ = [
     # pyrsistent
-    'freeze', 'frozen_curry', 'no_pyrsistent', 'to_pyrsistent',
+    'freeze', 'frozen_curry', 'no_pyrsistent', 'to_pyrsistent', 'to_builtins',
 ]
 
 # ----------------------------------------------------------------------
@@ -89,6 +89,7 @@ def no_pyrsistent(obj):
         if test_f(obj):
             return transform_f(obj)
     return obj
+to_builtins = no_pyrsistent
 
 def freeze(func):
     '''Ensure output of func is immutable

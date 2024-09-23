@@ -109,16 +109,18 @@ def ensure_paths(func, *, expanduser: bool=True, resolve: bool=False):
         args = list(args)
         for i in pos:
             # log.debug(f'ensure_paths: arg {i} {args[i]}')
-            args[i] = Path(args[i])
-            if expanduser:
-                args[i] = args[i].expanduser()
+            if args[i]:
+                args[i] = Path(args[i])
+                if expanduser:
+                    args[i] = args[i].expanduser()
         for k, v in kwargs.items():
             if k in path_params:
-                kwargs[k] = Path(v)
-                if expanduser:
-                    kwargs[k] = kwargs[k].expanduser()
-                if resolve:
-                    kwargs[k] = kwargs[k].resolve()
+                if kwargs[k]:
+                    kwargs[k] = Path(v)
+                    if expanduser:
+                        kwargs[k] = kwargs[k].expanduser()
+                    if resolve:
+                        kwargs[k] = kwargs[k].resolve()
         return func(*args, **kwargs)
     return path_arg_converter
 
@@ -132,7 +134,7 @@ def glob(glob_expr: str, path: Path):
     return path.glob(glob_expr)
 
 @ensure_paths
-def walk(path: Path, resolve: bool = True, skip_dirs: T.Sequence[str] = None):
+def walk(path: Path, resolve: bool = True, skip_dirs: T.Optional[T.Sequence[str]] = None):
     '''Return os.walk(path) as sequence of Path objects
 
     >>> with tempfile.TemporaryDirectory() as temp:

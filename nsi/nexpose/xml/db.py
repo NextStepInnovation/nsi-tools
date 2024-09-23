@@ -621,8 +621,8 @@ class Node(Base, NexposeData):
 
     @property
     def name(self):
-        return self.names[0]
-
+        return self.names[0].name if self.names else ''
+    
     @classmethod
     @curry
     def has_os(cls, with_os: str | T.Sequence[str], node: 'Node', *, 
