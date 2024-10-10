@@ -26,7 +26,24 @@ maybe = _maybe
 try:
     from cytoolz.curried import *
 except ImportError:
-    from toolz.curried import *
+    from toolz.curried import (
+        accumulate, apply, assoc, assoc_in, comp,
+        complement, compose, compose_left, concat, concatv,
+        cons, count, countby, curry, diff,
+        dissoc, do, drop, excepts, filter,
+        first, flip, frequencies, get, get_in,
+        groupby, identity, interleave, interpose, isdistinct,
+        isiterable, itemfilter, itemmap, iterate, join,
+        juxt, keyfilter, keymap, last, map,
+        mapcat, memoize, merge, merge_sorted, merge_with,
+        nth, operator, partial, partition, partition_all,
+        partitionby, peek, peekn, pipe, pluck,
+        reduce, reduceby, remove, second,
+        sliding_window, sorted, tail, take, take_nth,
+        thread_first, thread_last, topk, unique, update_in,
+        valfilter, valmap,
+
+    )
 
 from ..logging import new_log
 
@@ -42,7 +59,7 @@ __all__ = [
     'groupby', 'identity', 'interleave', 'interpose', 'isdistinct',
     'isiterable', 'itemfilter', 'itemmap', 'iterate', 'join',
     'juxt', 'keyfilter', 'keymap', 'last', 'map',
-    'mapcat', 'maybe', 'memoize', 'merge', 'merge_sorted', 'merge_with',
+    'mapcat', 'memoize', 'merge', 'merge_sorted', 'merge_with',
     'nth', 'operator', 'partial', 'partition', 'partition_all',
     'partitionby', 'peek', 'peekn', 'pipe', 'pluck',
     'reduce', 'reduceby', 'remove', 'second',
@@ -60,8 +77,9 @@ __all__ = [
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int', 'is_numeric',
     'is_none', 'is_not_dict', 'is_not_seq', 'is_not_string', 'is_seq',
     'is_some', 'is_not_none', 'is_str', 'items', 'values', 'keys', 
-    'log_lines', 'log_obj',
-    'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 'fmaybe', 'maybe_call',
+    'log_lines', 'log_obj', 
+    'lower', 'map_t', 'map_to_set', 'mapdo', 'mapif', 
+    'maybe', 'fmaybe', 'maybe_call',
     'max', 'maybe_first', 'maybe_float', 'maybe_int', 'maybe_last',
     'maybe_max', 'maybe_min', 'maybe_pipe', 'maybe_second', 'min',
     'mini_tb', 'setglobal', 'setlocal', 'noop', 'replace', 'sc_juxt',
@@ -462,7 +480,7 @@ def as_dict(func):
 # String in-line functions
 # ---------------------------
 
-streamable = NewType('streamable', (str, bytes, io.IOBase))
+streamable = str | bytes | io.IOBase
 
 def to_io(value: streamable):
     match value:

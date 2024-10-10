@@ -275,6 +275,7 @@ def make_table(columns: T.Sequence[str],
     | 1 | 2 |
     | 3 | 4 |
     '''
+    columns_as_code = columns_as_code or []
     def maker(rows):
         rows = tuple(rows)
         if not rows:

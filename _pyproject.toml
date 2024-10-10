@@ -7,3 +7,5 @@ reportOperatorIssue = false
 reportAttributeAccessIssue = false
 reportCallIssue = false
 reportPossiblyUnboundVariable = false
+reportWildcardImportFromLibrary = false
+reportOptionalMemberAccess = false
