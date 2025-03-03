@@ -36,5 +36,6 @@ from . import (
     pcap,
     cme,
     burp,
+    xccdf,
 )
 __version__ = '0.0.1'

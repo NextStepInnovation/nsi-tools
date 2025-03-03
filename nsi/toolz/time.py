@@ -48,7 +48,7 @@ def parse_dt(ts: str, local=False):
     return dt
 
 @curry
-def to_dt(value, default=datetime.fromtimestamp(0), **du_kw):
+def to_dt(value, default=datetime.fromtimestamp(0), local: bool=False, **du_kw):
     '''Attempt to parse the given value as a datetime object, otherwise
     return default=epoch
 
@@ -57,6 +57,10 @@ def to_dt(value, default=datetime.fromtimestamp(0), **du_kw):
     - 20190131T130506123456 (i.e. with microseconds)
 
     '''
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return value
     try_except = [
         (lambda v: dateutil.parser.parse(v, **du_kw), 
          (ValueError, TypeError)),
@@ -68,6 +72,8 @@ def to_dt(value, default=datetime.fromtimestamp(0), **du_kw):
     for func, excepts in try_except:
         try:
             output = func(value)
+            if output.tzname() and local:
+                return output.astimezone(dateutil.tz.tzlocal())
             return output
         except excepts:
             continue

@@ -284,7 +284,6 @@ class Test(Base, NexposeData):
             include_tags, exclude_tags,  include_regex, exclude_regex,
         )
         if finding_filter is not None:
-            log.error(finding_filter)
             return cls.finding.has(finding_filter)
         
 
@@ -1053,15 +1052,11 @@ class Finding(Base, NexposeData):
                 lambda s: f'({s})'
             )
         
-        log.error('here')
-        log.error((include_regex, exclude_regex))
-        
         match (include_regex, exclude_regex):
             case (None | [], None | []):
                 return None
             case (None | [], exclude):
                 exclude = join_regexes(exclude)
-                log.error(exclude)
                 return ~(Finding.title.regexp_match(exclude) |
                          Finding.description.regexp_match(exclude))
             case (include, None | []):
@@ -1071,8 +1066,6 @@ class Finding(Base, NexposeData):
                     (include, exclude),
                     map(join_regexes)
                 )
-                log.error(include)
-                log.error(exclude)
                 filter = (
                     (Finding.title.regexp_match(include) |
                      Finding.description.regexp_match(include)) |

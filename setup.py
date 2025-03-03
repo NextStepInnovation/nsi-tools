@@ -50,6 +50,7 @@ setup(
         'jmespath',
         'lxml',
         'markdown<3.2',
+        'markdownify',
         'msgpack',
         'multipledispatch',
         'networkx',

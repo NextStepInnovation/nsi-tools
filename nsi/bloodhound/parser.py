@@ -75,12 +75,12 @@ def bloodhound_data(data: dict):
         for o in objects:
             o['type'] = key
 
-    all_objects = (
-        data['computers'] + 
-        data['domains'] + 
-        data['groups'] + 
+    all_objects = tuple(concatv(
+        data['computers'],
+        data['domains'],
+        data['groups'],
         data['users']
-    )
+    ))
     return pipe(merge(
         data,
         {'all_objects': all_objects},
@@ -164,7 +164,7 @@ def primary_groups(path: Path):
 @curry
 @ensure_paths
 def get_members(path: Path, node: dict, *, level: int=0, 
-                max_level: int=math.inf):
+                max_level: int=30):
     data = parse_directory(path)
     prim_groups = primary_groups(path)
     match node:
@@ -213,7 +213,7 @@ computer_search = object_search('computers')
 @curry
 @ensure_paths
 def object_members(obj_type: str, path: Path, obj_re: str, *, 
-                   max_level: int=math.inf):
+                   max_level: int=30):
     log.info(
         (obj_type, path, obj_re, max_level)
     )

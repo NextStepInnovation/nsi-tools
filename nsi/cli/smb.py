@@ -83,7 +83,7 @@ def enumerate_smb_shares(ippath, output_dir, target, username, password,
         )
     elif socks_proxy_data:
         socks_re = re.compile(
-            r'SMB\s+(?P<ip>\d+\.\d+\.\d+\.\d+)\s+(?P<domain>\w+?)/(?P<user>\w+)\s+'
+            r'SMB\s+(?P<ip>\d+\.\d+\.\d+\.\d+)\s+(?P<domain>\w+?)/(?P<user>.+?)\s+'
             r'(?P<admin>TRUE|FALSE)\s+445'
         )
         ip_data = _.pipe(

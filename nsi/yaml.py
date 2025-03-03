@@ -52,15 +52,13 @@ def add_literal_scalar(obj):
                 add_literal_scalar(v) for v in seq
             )
         case string if _.is_str(seq):
-            if '\n' in string:
+            if '\n' in string or len(string) > 60:
                 return ruamel.yaml.scalarstring.LiteralScalarString(string)
             return string
         case otherwise:
             return otherwise
 
-@_.ensure_paths
-@_.curry
-def write_yaml(path: T.Union[str, Path], obj: T.Any):
+def write_yaml_to_content(obj: T.Any):
     match obj:
         case mapping if isinstance(mapping, Mapping):
             final_object = _.pipe(
@@ -75,9 +73,14 @@ def write_yaml(path: T.Union[str, Path], obj: T.Any):
             )
         case final_object: pass
 
-    final_object = add_literal_scalar(final_object)
+    return dump(add_literal_scalar(final_object))
+
+
+@_.ensure_paths
+@_.curry
+def write_yaml(path: T.Union[str, Path], obj: T.Any):
     with path.open('w') as wfp:
         # success = dump(obj, wfp)
-        success = dump(final_object, wfp)
+        success = wfp.write(write_yaml_to_content(obj))
     return success
 

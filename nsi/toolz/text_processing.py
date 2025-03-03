@@ -3,6 +3,7 @@ from typing import Union, Iterable
 import functools
 import re
 import pprint
+import gzip
 
 import pyperclip
 
@@ -21,7 +22,7 @@ __all__ = [
     'strip_comments', 'strip_comments_from_line', 'pformat', 'pfint', 'noansi', 
     'clip_text', 'clip_lines', 'strip_comments_from_lines', 'xlsx_to_clipboard', 
     'xorlines', 'html_list', 'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 
-    'table_lines', 'make_table', 'ascii_table',
+    'table_lines', 'make_table', 'ascii_table', 'html_table', 'download_rows_html',
 ]
 
 log = logging.new_log(__name__)
@@ -336,3 +337,123 @@ def make_table(columns: T.Sequence[str],
 
     return compose_left(maker, '\n'.join)
 ascii_table = make_table(pad=True)
+
+@curry
+def html_table(columns: T.Sequence[str], 
+               col_map=None, columns_as_code: T.Sequence[int] = None, 
+               pad: bool = False):
+    '''Functional html table maker. Given columns (i.e. row dict keys) and
+    map from those keys to final header names, return table-making function that
+    takes an iterable of rows and produces a markdown table.
+
+    '''
+    columns_as_code = columns_as_code or []
+    def maker(rows):
+        rows = tuple(rows)
+        if not rows:
+            return ''
+        
+        nonlocal columns, col_map
+        if columns is None:
+            columns = tuple(rows[0].keys())
+
+        if col_map:
+            header = [col_map[c] for c in columns]
+        else:
+            header = columns
+
+        if is_seq(rows[0]):
+            value_f = lambda _i, r: [(r[i] if i < len(r) else '') 
+                                     for i, _c in enumerate(columns)]
+            enum_row = lambda r: r
+        else:
+            enum_row = lambda r: [r.get(c, '') for c in columns]
+            value_f = lambda _i, r: enum_row(r)
+
+        if pad:
+            max_col_widths = [0 for v in header]
+            for row in [header] + [enum_row(row) for row in rows]:
+                for j, value in enumerate(row):
+                    width = len(str(value))
+                    if width > max_col_widths[j]:
+                        max_col_widths[j] = width
+
+            header = [str(h).center(max_col_widths[j]) for j, h in enumerate(header)]
+            old_value_f = value_f
+            value_f = lambda i, row: [
+                str(v).ljust(max_col_widths[j]) 
+                for j, v in enumerate(old_value_f(i, row))
+            ]
+            
+        yield '<table border=1>'
+        yield '<thead>'
+        yield '<tr>'
+        yield '<th> ' + '</th><th>'.join(header) + '</th>'
+        yield '</tr>'
+        yield '</thead>'
+        yield '<tbody>'
+        for i, row in enumerate(rows):
+            try:
+                values = value_f(i, row)
+            except:
+                log.exception(row)
+                raise
+            yield '<tr>'
+            yield '<td> ' + pipe(
+                values,
+                enumerate,
+                vmap(lambda i, v: f'<code>{v}</code>' if i in columns_as_code else v),
+                map(str),
+                '</td><td>'.join
+            ) + '</td>'
+            yield '</tr>'
+        yield '</tbody>'
+        yield '</table>'
+
+    return compose_left(maker, '\n'.join)
+
+_download_table_bp = '''
+<script>
+var rows_base64_{rows_md5} = (
+    // ROW_CSV_{rows_md5}_CONTENT_START
+    "{rows_gzip_b64}"
+    // ROW_CSV_{rows_md5}_CONTENT_END
+);
+var rows_csv_content_{rows_md5} = (
+  "data:application/vnd.ms-excel;base64," + pako.inflate(
+    Uint8Array.from(
+      atob(rows_base64_{rows_md5}), function(c){{return c.charCodeAt(0);}}
+    ), {{to: 'string'}}
+  )
+);
+function download_rows_csv_{rows_md5}() {{
+    var element = document.createElement('a');
+    element.setAttribute('href', rows_csv_content_{rows_md5});
+    element.setAttribute('download', 'content-{rows_md5}.csv');
+
+    element.style.display = 'none';
+    document.body.appendChild(element);
+
+    element.click();
+
+    document.body.removeChild(element);
+}}
+</script>
+<button class="btn btn-sm btn-primary" type="button" onclick="download_rows_csv_{rows_md5}();">Download Rows</button>
+'''
+
+@curry
+def download_rows_html(rows, **csv_rows_kwargs):
+    from .csv import csv_rows_to_content
+    from .common import to_bytes
+    from .hashing import b64encode, b64encode_str, md5
+    rows_gzip_b64 = pipe(
+        rows,
+        csv_rows_to_content(**csv_rows_kwargs),
+        to_bytes,
+        b64encode,
+        gzip.compress,
+        b64encode_str,
+    )
+    rows_md5 = md5(rows_gzip_b64)
+    return _download_table_bp.format(rows_gzip_b64=rows_gzip_b64, rows_md5=rows_md5)

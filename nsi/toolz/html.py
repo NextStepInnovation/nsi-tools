@@ -8,7 +8,7 @@ __all__ = [
     'soup', 'soup_from_url',
 ]
 
-from .common import pipe
+from .common import pipe, curry
 from .text_processing import clip_text
 
 # ----------------------------------------------------------------------
@@ -17,16 +17,19 @@ from .text_processing import clip_text
 #
 # ----------------------------------------------------------------------
 
-def soup(content: str):
-    return bs4.BeautifulSoup(content, 'lxml')
+@curry
+def soup(content: str, **kw):
+    if 'features' not in kw:
+        kw['features'] = 'lxml'
+    return bs4.BeautifulSoup(content, **kw)
 
-def soup_from_url(url: str, **requests_kw):
+def soup_from_url(url: str, soup_kw: dict = None, **requests_kw):
     try:
         match requests.get(url, **requests_kw):
             case requests.Response(status_code=200) as r_200:
                 return pipe(
                     r_200.content,
-                    soup
+                    soup(**(soup_kw or {})),
                 )
             case error:
                 content = clip_text(100, error.text)

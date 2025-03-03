@@ -4,7 +4,7 @@ from typing import Tuple
 import requests
 from pymaybe import Nothing
 
-from .common import pipe
+from .common import pipe, map
 
 __all__ = [
     # http
