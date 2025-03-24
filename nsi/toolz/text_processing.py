@@ -9,7 +9,7 @@ import pyperclip
 
 from .common import (
     is_dict, pipe, curry, map, filter, concatv, strip, vmap,
-    is_seq, is_str, to_str, merge, compose_left,
+    is_seq, is_str, to_str, merge, compose_left, unique,
 )
 
 from .. import logging
@@ -204,7 +204,7 @@ def clip_lines(length: int, sequence: T.Sequence[str], *,
 @curry
 def columns_as_code(columns_as_code: T.Sequence[int|str], 
                     row: T.Dict[str, T.Any] | T.Sequence[T.Any]):
-    columns = set(columns_as_code)
+    columns = pipe(columns_as_code, unique, tuple)
     if is_dict(row):
         return merge(
             row,

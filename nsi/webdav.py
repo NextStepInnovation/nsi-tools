@@ -9,9 +9,9 @@ from .toolz import (
     pipe, map, filter, merge, maybe_float, parse_dt, concatv, maybe_pipe, first,
     second, curry,
 )
+from . import logging
 
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
+log = logging.new_log(__name__)
 
 class DavPath:
     client_function = None
@@ -27,6 +27,9 @@ class DavPath:
 
     def __repr__(self):
         return f'DavPath: {self.path}'
+    
+    def __truediv__(self, other):
+        return self(other)
 
     @property
     def name(self):
@@ -95,6 +98,9 @@ class DavPath:
 
     def load_workbook(self):
         return load_workbook(self.client, self)
+    
+    def upload(self, file_path: Path):
+        return upload(self.client, file_path, self)
 
     def upload_workbook(self, wb):
         return upload_workbook(self.client, wb, self)
@@ -139,7 +145,6 @@ def copy(client: Client, from_path: DavPath, to_path: DavPath):
 
 @curry
 def download(client: Client, from_path: DavPath, to_path: Path):
-    print(client)
     return client.download(from_path.path, str(to_path))
 
 
