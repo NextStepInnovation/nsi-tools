@@ -67,6 +67,7 @@ setup(
         'requests[socks]',
         'ruamel.yaml<0.18.0',
         'scapy',
+        'selenium',
         'sqlalchemy',
         'strip-ansi',
         'toolz',

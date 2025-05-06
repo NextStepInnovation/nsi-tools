@@ -37,5 +37,6 @@ from . import (
     cme,
     burp,
     xccdf,
+    selenium,
 )
 __version__ = '0.0.1'
