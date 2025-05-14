@@ -15,7 +15,7 @@ log = logging.new_log(__name__)
 def headless_driver():
     options = ChromiumOptions()
     pipe(
-        ['--headless=new',],
+        ['--headless=new', '--no-sandbox'],
         map(options.add_argument),
         tuple,
     )
