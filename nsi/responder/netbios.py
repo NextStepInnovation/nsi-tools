@@ -8,11 +8,36 @@ import dns.exception
 from .. import logging
 from ..toolz import *
 from .common import (
-    query_num_to_name, is_netbios_name, decode_netbios_name, from_latin,
+    to_latin, query_num_to_name, from_latin,
 )
-from . import dns
 
 log = logging.new_log(__name__)
+
+is_netbios_byte = lambda v: v in range(ord('a'), ord('q'))
+def is_netbios_name(name: bytes):
+    name = to_latin(name)
+    return len(name) == 32 and pipe(
+        name[1:-1].lower(), 
+        map(is_netbios_byte),
+        all,
+    )
+
+def encode_netbios_name(name: str|bytes) -> bytes:
+    """Return the NetBIOS first-level encoded name."""
+    name = to_latin(name)
+    l = []
+    for c in struct.pack('16s', name):
+        l.append((c >> 4) + 0x41)
+        l.append((c & 0xf) + 0x41)
+    return bytes(l)
+
+def decode_netbios_name(name: bytes) -> str:
+    """Return the NetBIOS first-level decoded nbname."""
+    name = to_latin(name)
+    return bytes(
+        [((name[i] - 0x41) << 4) |
+         ((name[i+1] - 0x41) & 0xf) for i in range(0, 32, 2)]
+    ).decode('latin-1').replace('\x00', '').replace('\x1b', '').strip()
 
 def get_name(accum):
     if is_netbios_name(accum):
@@ -44,7 +69,7 @@ def parse_name(data: bytes, index: int, accum: str = '', accum_bytes: bytes = b'
 
 def parse_rr(data: bytes, rd_type: int):
     match rd_type:
-        case 1: # A
+        case 1 : # A
             a, b, c, d = data[:4]
             ip = f'{a}.{b}.{c}.{d}'
             return {
@@ -55,6 +80,13 @@ def parse_rr(data: bytes, rd_type: int):
             return {
                 'name': name,
                 'name_bytes': name_bytes,
+            }
+        case 32 : # NIMROD
+            name, (a, b, c, d) = data[:2], data[2:6]
+            ip = f'{a}.{b}.{c}.{d}'
+            return {
+                'name': name,
+                'ip': ip,
             }
 
 @curry
@@ -89,7 +121,7 @@ def parse_records(n_records: int, record_index: int, data: bytes, index: int,
         
         index = rr_index + rdata_length
         record = merge(record, {
-            'ttl': ttl, 'rdata': rdata,
+            'ttl': ttl, 'rdata': rdata, 'length': rdata_length,
         })
 
     yield merge(record, {'_index': index})
@@ -99,58 +131,66 @@ def parse_records(n_records: int, record_index: int, data: bytes, index: int,
 
 parse_questions = parse_records(is_question = True)
 
-class NBNSMessage(dns.DNSMessage):
-    def parse_data(self):
-        (self.tid, flags, n_question, 
-         n_answer, n_authority, n_additional) = struct.unpack(
-             '>HHHHHH', self.data[:12],
-        )
-        log.debug(
-            f'n_question: {n_question} n_answer: {n_answer}'
-            f' n_authority: {n_authority} n_additional: {n_additional}'
-        )
+def parse_nbns(data):
+    (tid, flags, n_question, 
+        n_answer, n_authority, n_additional) = struct.unpack(
+            '>HHHHHH', data[:12],
+    )
+    log.info(
+        f'n_question: {n_question} n_answer: {n_answer}'
+        f' n_authority: {n_authority} n_additional: {n_additional}'
+    )
 
-        self.question = tuple(parse_questions(
-            n_question, 0, self.data, 12,
-        ))
+    question = tuple(parse_questions(
+        n_question, 0, data, 12,
+    ))
 
-        last_index = self.question[-1]['_index'] if n_question else 12
+    last_index = question[-1]['_index'] if n_question else 12
 
-        self.answer = tuple(parse_records(
-            n_answer, 0, self.data, last_index
-        ))
+    answer = tuple(parse_records(
+        n_answer, 0, data, last_index
+    ))
 
-        last_index = self.answer[-1]['_index'] if n_answer else last_index
+    last_index = answer[-1]['_index'] if n_answer else last_index
 
-        self.authority = tuple(parse_records(
-            n_authority, 0, self.data, last_index
-        ))
+    authority = tuple(parse_records(
+        n_authority, 0, data, last_index
+    ))
 
-        last_index = self.authority[-1]['_index'] if n_authority else last_index
+    last_index = authority[-1]['_index'] if n_authority else last_index
 
-        self.additional = tuple(parse_records(
-            n_additional, 0, self.data, last_index
-        ))
+    additional = tuple(parse_records(
+        n_additional, 0, data, last_index
+    ))
 
-    def to_text(self):
-        return pipe(
-            [
-                f'tid: {self.tid}',
-                'Questions:',
-            ] + [
-                f'name: {q["name"]}  type: {q["type"]}'
-                for q in self.question
-            ] + ['Answers:'] + [
-                f'name: {a["name"]}  type: {a["type"]}'
-                for a in self.answer
-            ] + ['Authority:'] + [
-                f'name: {a["name"]}  type: {a["type"]}'
-                for a in self.authority
-            ] + ['Additional:'] + [
-                f'name: {a["name"]}  type: {a["type"]}'
-                for a in self.additional
-            ],
-            '\n'.join
-        )
+    return {
+        'tid': tid,
+        'flags': flags,
+        'question': question,
+        'answer': answer,
+        'authority_rr': authority,
+        'additions_rr': additional,
+    }
+
+def to_text(self):
+    return pipe(
+        [
+            f'tid: {self.tid}',
+            'Questions:',
+        ] + [
+            f'name: {q["name"]}  type: {q["type"]}'
+            for q in self.question
+        ] + ['Answers:'] + [
+            f'name: {a["name"]}  type: {a["type"]}'
+            for a in self.answer
+        ] + ['Authority:'] + [
+            f'name: {a["name"]}  type: {a["type"]}'
+            for a in self.authority
+        ] + ['Additional:'] + [
+            f'name: {a["name"]}  type: {a["type"]}'
+            for a in self.additional
+        ],
+        '\n'.join
+    )
 
 

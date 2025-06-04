@@ -1,168 +1,130 @@
 import typing as T
 import struct
 import socket
-from dataclasses import (
-    dataclass, fields, astuple,
-)
-from collections import OrderedDict
+import random
 
-import ifcfg
-import scapy.layers.llmnr as llmnr
+import dns
+import dns.message
+import dns.rdatatype
+import dns.rrset
+import dns.rdataclass
+import dns.rdatatype
+import dns.rdtypes.IN.A
+import dns.rdtypes.IN.AAAA
+from dns.rdataclass import RdataClass
+from dns.rdatatype import RdataType
+
 
 from .. import logging
-from ..toolz import *
+from ..toolz import (
+    pipe, map, filter, items, vfilter, first, to_str, curry
+)
 from .common import (
-    Configuration, client_ip, to_latin,
+    DnsConfig, client_ip, to_latin, has_ipv6, MNR, RDATATYPE,
 )
 
 log = logging.new_log(__name__)
 
-class Fielded(type):
-    def __new__(cls, name, bases, dct):
-        instance = super().__new__(cls, name, bases, dct)
-        instance._fields = pipe(
-            dct,
-            items,
-            vfilter(lambda k, v: not (k.startswith('_') or callable(v))),
-            map(first),
-            tuple,
+def build_response(query: dns.message.QueryMessage, answer: str, *answers: str, ttl: int = 255):
+    '''
+    For any DNS query, create a response that provides answers commensurate with
+    the questions in the query
+    '''
+    response = dns.message.make_response(query)
+    response.question.clear()
+    answers = (answer,) + answers
+    if len(query.question) != len(answers):
+        answers = (answers[0],) * len(query.question)
+    for question, answer in zip(query.question, answers):
+        response.answer.append(
+            dns.rrset.from_text(
+                question.name, ttl, question.rdclass, question.rdtype, answer
+            )
         )
-        for k in instance._fields:
-            setattr(instance, k, to_latin(dct[k]))
-        return instance
+    return response
 
-class Packet(metaclass=Fielded):
-    _fields = ()
-    def __init__(self, config: Configuration, req_data: bytes):
-        self.config = config
-        self.req_data = req_data
-    
-    def __repr__(self):
-        return pipe(
-            self._fields,
-            map(lambda k: f'{k}={repr(getattr(self, k))}'),
-            map(to_str),
-            ', '.join,
-            lambda s: f'{self.__class__.__name__}({s})'
+@curry
+def send_mnr_query(ip_version: str, mnr_type: str, sock: socket.socket, name: str) -> bool:
+    """
+    Sends a multicast DNS (mDNS/LLMNR) query.
+
+    Args:
+        sock (socket.socket): socket to use to send the query
+        name (str): hostname to look up
+
+    Returns:
+        bool: Packet successfully sent
+    """
+    if mnr_type not in MNR or ip_version not in MNR[mnr_type]:
+        log.error(
+            f"Invalid MNR type ({mnr_type}) and/or IP version ({ip_version}) specified."
         )
-    
-    def compute(self):
-        pass
-        
-    def to_bytes(self):
-        self.compute()
-        return pipe(
-            self._fields,
-            map(lambda k: getattr(self, k)),
-            map(lambda v: v(self, self.config, self.req_data) if callable(v) else v),
-            map(to_latin),
-            b''.join,
+        return
+
+    mnr_group, mnr_port = MNR[mnr_type][ip_version], MNR[mnr_type]['port']
+
+    log.debug(
+        f"Attempting to send {mnr_type} {ip_version} query for:"
+        f" {name} to {mnr_group}:{mnr_port}"
+    )
+
+    query = dns.message.make_query(
+        name, RDATATYPE[ip_version]
+    )
+
+    success: bool = False
+    try:
+        sock.sendto(
+            query.to_wire(), 
+            (mnr_group, mnr_port,) + ((0, 0) if ip_version == 'ipv6' else ())
+        )
+        success = True
+    except Exception as e:
+        log.exception(
+            f"Error sending {mnr_type} query for {ip_version}: {e}"
         )
 
-class LLMNRv4Answer(Packet):
-    tid = '\x00\x00'
-    flags = '\x80\x00'
-    question = "\x00\x01"
-    answer_count = "\x00\x01"
-    authority_count = "\x00\x00"
-    additional_count = "\x00\x00"
-    question_name_len = "\x09"
-    question_name = ''
-    question_name_null = "\x00"
-    type = "\x00\x01"
-    class_ = "\x00\x01"
-    answer_name_len = "\x09"
-    answer_name = ""
-    answer_name_null = "\x00"
-    type1 = "\x00\x01"
-    class1 = "\x00\x01"
-    ttl = "\x00\x00\x00\x1e"
-    ip_len = "\x00\x04"
-    ip = "\x00\x00\x00\x00"
+    return success
 
-    def compute(self):
-        self.tid = self.req_data[:2]
-        name = llmnr_name(self.req_data)
-        self.question_name = name
-        self.answer_name = name
-        self.ip = self.config['interface']["ipv4_bytes"]
-        self.ip_len = struct.pack('>h', len(self.ip))
-        self.answer_name_len = struct.pack('>B', len(self.answer_name))
-        self.question_name_len = struct.pack('>B', len(self.question_name))
+@curry
+def send_nbns_query(config: DnsConfig, sock: socket.socket, name: str) -> bool:
+    """
+    Sends a NetBIOS Name Service (NBNS) query.
 
-def llmrn_query(req_data: bytes):
-    pass
+    Args:
+        sock (socket.socket): socket to use to send the query
+        name (str): hostname to look up
 
-class LLMNRv6Answer(Packet):
-    tid = '\x00\x00'
-    flags = "\x80\x00"
-    question_count = "\x00\x01"
-    answer_count = "\x00\x01"
-    authority_count = "\x00\x00"
-    additional_count = "\x00\x00"
-    question_name_len = "\x09"
-    question_name = ""
-    question_name_null = "\x00"
-    type = "\x00\x1c"
-    class_ = "\x00\x01"
-    answer_name_len = "\x09"
-    answer_name = ""
-    answer_name_null = "\x00"
-    type1 = "\x00\x1c"
-    class1 = "\x00\x01"
-    ttl = "\x00\x00\x00\x1e" # 30 seconds
-    ip_len = "\x00\x08"
-    ip = "\x00\x00\x00\x00\x00\x00\x00\x00"
+    Returns:
+        bool: Packet successfully sent
 
-    def compute(self):
-        self.tid = self.req_data[:2]
-        name = llmnr_name(self.req_data)
-        self.question_name = name
-        self.answer_name = name
-        self.ip = self.config['interface']["ipv6_bytes"]
-        self.ip_len = struct.pack('>h', len(self.ip))
-        self.answer_name_len = struct.pack('>B', len(self.answer_name))
-        self.question_name_len = struct.pack('>B', len(self.question_name))
+    """
 
-class MDNSv4Answer(Packet):
-    tid = "\x00\x00"
-    flags = "\x84\x00"
-    question_count = "\x00\x00"
-    answer_count = "\x00\x01"
-    authority_count = "\x00\x00"
-    additional_count = "\x00\x00"
-    answer_name = ""
-    answer_name_null = "\x00"
-    type = "\x00\x01"
-    class_ = "\x00\x01"
-    ttl = "\x00\x00\x00\x78"
-    ip_len = "\x00\x04"
-    ip = "\x00\x00\x00\x00"
+    if not sock.getsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-    def compute(self):
-        self.answer_name = mdns_answer_name(self.req_data)
-        self.ip = self.config['interface']['ipv4_bytes']
-        self.ip_len = struct.pack('>h', len(self.ip))
+    group = config['interface']['broadcast']
+    port = 137
 
-    
-class MDNSv6Answer(Packet):
-    tid = "\x00\x00"
-    flags = "\x84\x00"
-    question_count = "\x00\x00"
-    answer_count = "\x00\x01"
-    authority_count = "\x00\x00"
-    additional_count = "\x00\x00"
-    answer_name = ""
-    answer_name_null = "\x00"
-    type = "\x00\x1c"
-    class_ = "\x00\x01"
-    ttl = "\x00\x00\x00\x78" # 2 minutes
-    ip_len = "\x00\x08"
-    ip = "\x00\x00\x00\x00\x00\x00\x00\x00"
+    log.debug(
+        f"Attempting to send nbns query for: {name} to {group}:{port}"
+    )
 
-    def compute(self):
-        self.answer_name = mdns_answer_name(self.req_data)
-        self.ip = self.config['interface']['ipv6_bytes']
-        self.ip_len = struct.pack('>h', len(self.ip))
+    query = dns.message.make_query(
+        name, RDATATYPE[ip_version]
+    )
 
+    success: bool = False
+    try:
+        sock.sendto(
+            query.to_wire(), 
+            (mnr_group, mnr_port,) + ((0, 0) if ip_version == 'ipv6' else ())
+        )
+        success = True
+    except Exception as e:
+        log.exception(
+            f"Error sending {mnr_type} query for {ip_version}: {e}"
+        )
+
+    return success
 

@@ -36,5 +36,6 @@
     ["nsi-ntlm-extract", "nsi.cli.ntlm:extract"],
     ["nsi-filesystem-meta", "nsi.cli.filesystem:metadata"],
     ["nsi-nexpose", "nsi.cli.nexpose:nexpose_command"],
-    ["nsi-cme", "nsi.cli.cme:cme_command"]
+    ["nsi-cme", "nsi.cli.cme:cme_command"],
+    ["nsi-responder", "nsi.cli.responder:main"]
 ]

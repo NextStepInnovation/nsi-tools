@@ -3,9 +3,9 @@ import struct
 import socket
 from collections import namedtuple
 
+import dns.rdatatype
 import ifcfg
 import dns.message
-import dns.rrset
 
 from .. import logging
 from ..toolz import *
@@ -23,17 +23,57 @@ from_latin = lambda b: b if is_str(b) else b.decode('latin-1')
 
 @memoize
 def has_ipv6():
-    if not socket.has_ipv6:
-        return False
     try:
+        if not socket.has_ipv6:
+            return False
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
             s.bind(('::1', 0))
         return True
     except:
         return False
 
+MNR = {
+    'mdns': {
+        'ipv4': '224.0.0.251', # Standard mDNS multicast address for IPv4
+        'ipv6': 'ff02::fb',    # Standard mDNS multicast address for IPv6
+        'port': 5353,          # Standard mDNS port
+        'query_ttl': 255,
+        'response_ttl': 30,
+    },
+    'llmnr': {
+        'ipv4': '224.0.0.252', # Standard mDNS multicast address for IPv4
+        'ipv6': 'ff02::1:3',   # Standard mDNS multicast address for IPv6
+        'port': 5355,          # Standard mDNS port
+        'query_ttl': 1,
+        'response_ttl': 30,
+    },
+    'nbns': {
+        'ipv4': None, # NBT-NS is broadcast
+        'ipv6': None, # NBT-NS is broadcast
+        'port': 137,  # standard NBT-NS port
+        'query_ttl': 1,
+        'response_ttl': 165,
+    },
+}
+
+RDATATYPE = {
+    'ipv4': dns.rdatatype.A,
+    'ipv6': dns.rdatatype.AAAA,
+}
+
 class Interface(T.TypedDict):
+    inet: str
+    inet4: T.Sequence[str]
+    ether: str
+    inet6: T.Sequence[str]
+    netmask: str
+    netmasks: T.Sequence[str]
+    broadcast: str
+    broadcasts: T.Sequence[str]
     device: str
+    flags: str
+    mtu: str
+
     ipv4: str
     ipv4_bytes: bytes
     ipv6: str
@@ -45,15 +85,14 @@ def get_interface(device: str) -> Interface:
     iface = ifcfg.interfaces()[device]
     index = socket.if_nametoindex(iface['device'])
     ipv6 = iface.get('inet6', ['::'])[0]
-    return {
-        'device': iface['device'], 
+    return merge(iface, {
         'ipv4': iface['inet'], 
         'ipv4_bytes': socket.inet_aton(iface['inet']),
         'ipv6': ipv6,
         'ipv6_bytes': socket.inet_pton(socket.AF_INET6, ipv6),
         'index': index,
         'index_bytes': struct.pack('@I', index),
-    }
+    })
 
 @memoize
 def default_interface() -> Interface:
@@ -70,9 +109,8 @@ def client_ip(client_address: ClientAddress):
         return host.replace('::ffff:', '')
     return host
 
-class Configuration(T.TypedDict):
+class DnsConfig(T.TypedDict):
     interface: Interface
-    analyze_only: bool
     ignore_localhost: bool
     ignore_ips: IpList
     ignore_names: T.Sequence[str]
@@ -90,7 +128,7 @@ def new_configuration(**kw):
         'only_names': [],
     }, kw), norm_configuration)
 
-def norm_configuration(config: Configuration):
+def norm_configuration(config: DnsConfig):
     return merge(config, {
         'ignore_names': [n.lower() for n in config['ignore_names']],
         'ignore_ips': [i.lower() for i in config['ignore_ips']],
@@ -124,7 +162,7 @@ def llmnr_query_type(data: bytes) -> str:
         return
     return query_num_to_name.get(message.question[0].rdtype)
 
-def respond_to_ip(config: Configuration, ip: Ip):
+def respond_to_ip(config: DnsConfig, ip: Ip):
     ip = ip.lower()
 
     if config['ignore_localhost'] and (ip.startswith('127.') or ip.startswith('::')):
@@ -145,7 +183,7 @@ def respond_to_ip(config: Configuration, ip: Ip):
 
     return True
 
-def respond_to_name(config: Configuration, name: str):
+def respond_to_name(config: DnsConfig, name: str):
     name = name.lower()
 
     if name in config['ignore_names']:
@@ -162,32 +200,6 @@ def respond_to_name(config: Configuration, name: str):
 
     return True
 
-def respond_to_host(config: Configuration, ip: Ip, name: str):
+def respond_to_host(config: DnsConfig, ip: Ip, name: str):
     return respond_to_ip(config, ip) and respond_to_name(config, name)
-
-is_netbios_byte = lambda v: v in range(ord('a'), ord('q'))
-def is_netbios_name(name: bytes):
-    name = to_latin(name)
-    return len(name) == 32 and pipe(
-        name[1:-1].lower(), 
-        map(is_netbios_byte),
-        all,
-    )
-
-def encode_netbios_name(name: str|bytes) -> bytes:
-    """Return the NetBIOS first-level encoded name."""
-    name = to_latin(name)
-    l = []
-    for c in struct.pack('16s', name):
-        l.append((c >> 4) + 0x41)
-        l.append((c & 0xf) + 0x41)
-    return bytes(l)
-
-def decode_netbios_name(name: bytes) -> str:
-    """Return the NetBIOS first-level decoded nbname."""
-    name = to_latin(name)
-    return bytes(
-        [((name[i] - 0x41) << 4) |
-         ((name[i+1] - 0x41) & 0xf) for i in range(0, 32, 2)]
-    ).decode('latin-1').replace('\x00', '').replace('\x1b', '').strip()
 

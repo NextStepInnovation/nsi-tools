@@ -1,5 +1,5 @@
 from . import (
-    common, parser, process, netbios, servers, packets,
+    common, parser, process, servers, packets, netbios, sockets,
 )
 
 from .parser import QueryDict, QueryList
