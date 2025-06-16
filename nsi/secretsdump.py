@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from ipaddress import IPv4Address
+import os
 import logging
 import re
 from pathlib import Path
@@ -12,11 +13,17 @@ from . import ntlm
 
 log = logging.new_log(__name__)
 
+secretsdump_exec_key = 'NSI_IMPACKET_SECRETSDUMP'
+def get_secretsdump_exec():
+    if secretsdump_exec_key in os.environ:
+        return os.environ[secretsdump_exec_key]
+    return 'impacket-secretsdump'
+
 @curry
 def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None, 
                 password=None, domain=None, *, 
                 proxychains: bool = False,
-                secretsdump_exec='impacket-secretsdump',
+                secretsdump_exec=None,
                 getoutput=shell.getoutput, **secretsdump_options):
 
     options = pipe(
@@ -32,6 +39,8 @@ def secretsdump(ip: T.Union[str, IPv4Address], user: str, hashes=None,
     user = (
         f'{domain}/{user}' if domain else user
     )
+
+    secretsdump_exec = secretsdump_exec if secretsdump_exec else get_secretsdump_exec()
 
     command = (
         ('proxychains ' if proxychains else '') + 
