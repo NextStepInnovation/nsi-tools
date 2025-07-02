@@ -37,13 +37,13 @@ def get_client(user: str, host: str,
                domain: str=None) -> T.Tuple[bool, SMBConnection | None]:
     try:
         client = SMBConnection(host, host)
-        client.login(user, password,
+        success = client.login(user, password,
             **merge(
                 {'nthash': nthash} if nthash else {},
                 {'domain': domain} if domain else {},
             )
         )
-        return True, client
+        return success, client
     except SessionError as err:
         log.exception(
             'Problem creating client'

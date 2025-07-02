@@ -79,6 +79,7 @@ setup(
         'zeroconf',
         'openpyxl',
         'pycomplete',
+        'zmq',
     ],
 
     version=version(),
