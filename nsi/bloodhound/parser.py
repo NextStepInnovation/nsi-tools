@@ -143,6 +143,35 @@ get_computer_names = compose_left(
     get_names,
 )
 
+get_user_dict = compose_left(
+    parse_directory,
+    get('users'),
+    mget('Properties'),
+    filter(lambda u: 'samaccountname' in u),
+    groupby(lambda u: u['samaccountname'].lower()),
+    valmap(first),
+)
+
+def get_domain_admins(path):
+    return pipe(
+        group_members(path, 'domain admins'),
+        values,
+        first,
+        mget('Properties'),
+        mget('samaccountname'),
+        filter(None),
+        map(lower),
+        set,
+    )
+
+def get_admin_users(path):
+    return pipe(
+        get_user_dict(path),
+        values,
+        filter(lambda u: u.get('admincount')),
+        mget('samaccountname'),
+        set,
+    )
 
 @memoize
 @ensure_paths

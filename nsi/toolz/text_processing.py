@@ -259,7 +259,7 @@ def table_lines(columns: T.Sequence[str], align: str = None):
 @curry
 def make_table(columns: T.Sequence[str], 
                col_map=None, columns_as_code: T.Sequence[int] = None, 
-               pad: bool = False):
+               pad: bool = False, max_rows: int = None, no_header: bool = False):
     '''Functional markdown table maker. Given columns (i.e. row dict keys) and
     map from those keys to final header names, return table-making function that
     takes an iterable of rows and produces a markdown table.
@@ -278,18 +278,30 @@ def make_table(columns: T.Sequence[str],
     '''
     columns_as_code = columns_as_code or []
     def maker(rows):
-        rows = tuple(rows)
+        rows = list(rows)
         if not rows:
             return ''
-        
-        nonlocal columns, col_map
+
+        nonlocal columns, col_map, max_rows
+
         if columns is None:
-            columns = tuple(rows[0].keys())
+            if is_dict(rows[0]):
+                columns = tuple(rows[0].keys())
+            else:
+                columns = [''] * len(rows[0])
 
         if col_map:
             header = [col_map[c] for c in columns]
         else:
             header = columns
+
+        if max_rows:
+            new = rows[:max_rows // 2]
+            elide = [''] * len(header)
+            elide[0] = f'{len(rows) - max_rows} rows elided'
+            new.extend([['']*len(header), elide, ['']*len(header)])
+            new.extend(rows[max_rows // 2:])
+            rows = new
 
         if is_seq(rows[0]):
             value_f = lambda _i, r: [(r[i] if i < len(r) else '') 
@@ -313,24 +325,32 @@ def make_table(columns: T.Sequence[str],
                 str(v).ljust(max_col_widths[j]) 
                 for j, v in enumerate(old_value_f(i, row))
             ]
-            
-        yield '| ' + ' | '.join(header) + ' |'
-        yield '|:' + pipe(
-            header,
-            map(lambda h: '-'*(len(h) + 1)),
-            '|:'.join,
-        )+ '|'
-        # yield '|:--'*len(header) + '|'
-        for i, row in enumerate(rows):
+
+        if not no_header:
+            yield '| ' + ' | '.join(header) + ' |'
+            yield '|:' + pipe(
+                header,
+                map(lambda h: '-'*(len(h) + 1)),
+                '|:'.join,
+            )+ '|'
+
+        M = len(header)
+        for i, row in enumerate(rows[:max_rows]):
             try:
                 values = value_f(i, row)
             except:
                 log.exception(row)
                 raise
+            code_cols = set(concatv(
+                columns_as_code, pipe(
+                    columns_as_code,
+                    map(lambda i: i + M),
+                )
+            ))
             yield '| ' + pipe(
                 values,
                 enumerate,
-                vmap(lambda i, v: f'`{v}`' if i in columns_as_code else v),
+                vmap(lambda i, v: (f'`{v}`' if v not in {'', None} else '') if i in code_cols else v),
                 map(str),
                 ' | '.join
             ) + ' |'

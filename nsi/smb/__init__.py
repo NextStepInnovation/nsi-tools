@@ -1,2 +1,2 @@
-from . import common, session, smbmap, mining
+from . import common, session, smbmap, mining, impacket
 

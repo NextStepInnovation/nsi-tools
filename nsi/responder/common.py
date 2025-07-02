@@ -6,9 +6,14 @@ from collections import namedtuple
 import dns.rdatatype
 import ifcfg
 import dns.message
+from dns.rrset import RRset
+import dns.opcode
+import dns.flags
 
 from .. import logging
-from ..toolz import *
+from ..toolz import (
+    pipe, vmap, map, filter, memoize, curry, to_bytes, is_str, merge,
+)
 from ..types import Ip, IpList
 
 log = logging.new_log(__name__)
@@ -31,6 +36,22 @@ def has_ipv6():
         return True
     except:
         return False
+    
+def encode_name(name: str) -> bytes:
+    parts = name.split('.')
+    return pipe(
+        parts,
+        map(to_bytes),
+        map(lambda b: struct.pack('b', len(b)) + b),
+        b''.join,
+    ) + b'\x00'
+
+def encode_ip(ip: str) -> bytes:
+    return pipe(
+        ip.split('.'),
+        map(int),
+        vmap(lambda a, b, c, d: struct.pack("!BBBB", a, b, c, d)),
+    )
 
 MNR = {
     'mdns': {
@@ -136,6 +157,13 @@ def norm_configuration(config: DnsConfig):
         'only_ips': [i.lower() for i in config['only_ips']],
     })
 
+def lstrings(data: bytes, encoding: str = 'utf-8') -> T.Iterable[str]:
+    while data:
+        size, data = data[0], data[1:]
+        datum = data[:size]
+        yield datum.decode(encoding=encoding)
+        data = data[size:]
+
 query_pairs = [
     (1, 'A'), (2, 'NS'), (3, 'MD'), (4, 'MF'), (5, 'CNAME'), (6, 'SOA'), (7, 'MB'),
     (8, 'MG'), (9, 'MR'), (10, 'NULL'), (11, 'WKS'), (12, 'PTR'), (13, 'HINFO'),
@@ -156,50 +184,70 @@ query_pairs = [
 query_num_to_name = dict(query_pairs)
 query_name_to_num = {y: x for x, y in query_pairs}
 
-def llmnr_query_type(data: bytes) -> str:
-    message = dns.message.from_wire(data)
-    if not message.question:
-        return
-    return query_num_to_name.get(message.question[0].rdtype)
+@curry
+def mattr(attr: str, message: dns.message.Message):
+    return getattr(message, attr)
+@curry
+def mfunc(attr: str, message: dns.message.Message):
+    return getattr(message, attr)()
+@curry
+def mflag(attr: str, message: dns.message.Message):
+    flag = getattr(dns.opcode, attr)
+    return bool(message.flags & flag)
 
-def respond_to_ip(config: DnsConfig, ip: Ip):
-    ip = ip.lower()
+class DnsMessage:
+    type: str
+    host: str
+    port: int
+    message: dns.message.Message
 
-    if config['ignore_localhost'] and (ip.startswith('127.') or ip.startswith('::')):
-        log.debug(f'Received localhost request ({ip}).')
-        return False
+    def __init__(self, host: str, port: int, message: dns.message.Message):
+        self.host = host
+        self.port = port
+        self.message = message
 
-    if ip in config['ignore_ips']:
-        log.warning(
-            f'{ip} in ignore list.'
-        )
-        return False
-
-    if config['only_ips'] and ip not in config['only_ips']:
-        log.warning(
-            f'{ip} not in IP list to respond to.'
-        )
-        return False
-
-    return True
-
-def respond_to_name(config: DnsConfig, name: str):
-    name = name.lower()
-
-    if name in config['ignore_names']:
-        log.warning(
-            f'Name ({name}) in list of names to ignore.'
-        )
-        return False
-
-    if config['only_names'] and name not in config['only_names']:
-        log.warning(
-            f'Name ({name}) not in list of names to respond do.'
-        )
-        return False
-
-    return True
-
-def respond_to_host(config: DnsConfig, ip: Ip, name: str):
-    return respond_to_ip(config, ip) and respond_to_name(config, name)
-
+    def query_to_dict(self, rrset: RRset):
+        raise NotImplemented
+    
+    def rrset_to_dict(self, rrset: RRset):
+        raise NotImplemented
+    
+    def opcode_name(self):
+        return self.message.opcode().name.lower()
+    
+    def rcode_name(self):
+        return self.message.rcode().name.lower()
+    
+    def to_dict(self) -> dict:
+        return {
+            'type': self.type,
+            'host': self.host,
+            'port': self.port,
+            'id': self.message.id,
+            'raw': self.message.to_wire(),
+            'flags': {
+                'qr': bool(self.message.flags & dns.flags.QR),
+                'opcode': int(self.message.opcode()),
+                'opcode_name': self.opcode_name(),
+                'qr': bool(self.message.flags & dns.flags.QR),
+                'aa': bool(self.message.flags & dns.flags.AA),
+                'c': bool(self.message.flags & dns.flags.AA), # LLMNR conflict
+                'tc': bool(self.message.flags & dns.flags.TC),
+                'rd': bool(self.message.flags & dns.flags.RD),
+                't': bool(self.message.flags & dns.flags.RD), # LLMNR tentative
+                'ra': bool(self.message.flags & dns.flags.RA),
+                'r0': bool(self.message.flags & dns.flags.RA), # LLMNR reserved
+                'ad': bool(self.message.flags & dns.flags.AD),
+                'r1': bool(self.message.flags & dns.flags.AD), # LLMNR reserved
+                'cd': bool(self.message.flags & dns.flags.CD),
+                'r2': bool(self.message.flags & dns.flags.CD), # LLMNR reserved
+                'b': bool(self.message.flags & dns.flags.CD), # NBNS broadcast
+                'rcode': int(self.message.rcode()),
+                'rcode_name': self.rcode_name(),
+            },
+            'queries': [self.query_to_dict(r) for r in self.message.question],
+            'answers': [self.rrset_to_dict(r) for r in self.message.answer],
+            'authority': [self.rrset_to_dict(r) for r in self.message.authority],
+            'additional': [self.rrset_to_dict(r) for r in self.message.additional],
+        }
+    

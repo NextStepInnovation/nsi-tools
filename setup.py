@@ -76,6 +76,7 @@ setup(
         'webdav',
         'xmltodict',
         'xmljson',
+        'zeroconf',
         'openpyxl',
         'pycomplete',
     ],

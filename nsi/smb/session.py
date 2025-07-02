@@ -26,8 +26,6 @@ import pprint
 import dataclasses
 from dataclasses import dataclass
 
-from pymaybe import Nothing
-
 from nsi.toolz.filesystem import ensure_paths
 
 from ..toolz import (

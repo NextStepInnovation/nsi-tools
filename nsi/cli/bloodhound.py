@@ -81,6 +81,8 @@ def list_objects(obj_func, inpath, outpath, admin, enabled, to_clipboard, csv,
     def print_formatter(hosts):
         return pipe(
             hosts,
+            map(map_t(replace('\r', ''))),
+            map(map_t(replace('\n', ' '))),
             map('\t'.join),
             # vmap(lambda name, id: f'{name}\t{id}'),
             '\n'.join,

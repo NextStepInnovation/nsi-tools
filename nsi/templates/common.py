@@ -1,14 +1,20 @@
 import re
 from pathlib import Path
+import importlib.resources
 
-from pkg_resources import resource_filename as _resource_filename
+# from pkg_resources import resource_filename as _resource_filename
 
 from ..toolz import *
 from .. import logging
 
 log = logging.new_log(__name__)
 
-resource_filename = partial(_resource_filename, __name__)
+here = importlib.resources.files(__name__)
+
+def resource_filename(name):
+    return here / name
+
+# resource_filename = partial(_resource_filename, __name__)
 resource_filename_f = compose_left(
     resource_filename,
     lambda n: Path(n).expanduser(),
