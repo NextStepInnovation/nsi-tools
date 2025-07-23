@@ -460,7 +460,10 @@ def get_file_type(client: SMBConnection, file: str|Path|FileData, share: str = N
             return None
 
     if file['is_dir']:
-        return {'content': 'directory', 'ext': None}
+        return {
+            'content': 'directory', 'ext': None, 
+            'write': is_dir_writeable(client, share, file['path']),
+        }
 
     tid = get_tree_id(client, share)
     fid = client.openFile(
