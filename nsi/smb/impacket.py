@@ -651,7 +651,7 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
                 json_paths, 
                 mapcat(json_slurp), 
                 tuple,
-                json_dumps
+                json_dumps(indent=2),
             ),
         ))),
         values,
