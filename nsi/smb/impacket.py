@@ -223,9 +223,9 @@ def get_client(host: str, *,
             
     except SessionError as err:
         match parse_session_error(err):
-            case {'name': 'STATUS_ACCESS_DENIED'}:
-                pass
-            case {'name': 'STATUS_TRUSTED_RELATIONSHIP_FAILURE'}:
+            case {'name': ('STATUS_ACCESS_DENIED'|
+                           'STATUS_TRUSTED_RELATIONSHIP_FAILURE'|
+                           'STATUS_NO_LOGON_SERVERS')}:
                 pass
             case other:
                 log.error(
@@ -233,14 +233,19 @@ def get_client(host: str, *,
                 )
     except NetBIOSTimeout as to_err:
         log.debug(f'NetBIOS Timeout on {host}')
+    except socket.error as socket_err:
+        if 'timed out' in str(socket_err):
+            pass
+        else:
+            log.exception(
+                f'socket.error getting shares from host {host}'
+            )
     except Exception as err:
         if 'No answer!' in str(err):
             log.debug(f'Gave up negotiating SMB handshake on {host}')
         else:
-            log.exception(f'Unknown error connecting to {host}: {err}')
+            log.exception(f'Unknown error connecting to {host}: {type(err)} {err}')
 
-
-        
 @ensure_paths
 def win_path(unix_path: Path) -> str:
     return '\\' + pipe(
@@ -418,6 +423,10 @@ class LoginData(T.NamedTuple):
     hashes: str
     ip: str
     socks: bool
+    def key(self) -> T.Tuple[str, str, str, str, bool]:
+        return (
+            self.domain, self.user, self.password, self.hashes, self.socks,
+        )
 
 ntlmrelayx_socks_re = re.compile(
     r'SMB\s+(?P<ip>\d+\.\d+\.\d+\.\d+)\s+(?P<domain>\w+?)/(?P<user>.+?)\s+'
@@ -430,7 +439,8 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
                          *,
                          is_socks: bool = False,
                          proxy_host: str = None, proxy_port: int = None,
-                         max_workers: int = None, force: bool = False) -> str:
+                         max_workers: int = None, force: bool = False,
+                         output_dir_path: Path = None) -> str:
 
     login_data: T.Sequence[LoginData] = ...
 
@@ -490,19 +500,23 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
 
     def output_dir(data: LoginData):
         ld_hash = ld_hashes[data.user]
+        dir_path = Path(output_dir_path or '.')
         if data.socks:
-            return Path(
+            return dir_path / (
                 f'.smb-shares-{data.user}-SOCKS'
             )
         user = data.user or "NULL"
         pw_or_hash = (nt(data.password) if data.password else data.hashes) or 'NULL'
-        return Path(
+        return dir_path / (
             f'.smb-shares-{user}-{pw_or_hash}'
         )
 
-    output_dirs = {
-        data.user: output_dir(data) for data in login_data
-    }
+    output_dirs = pipe(
+        login_data,
+        groupby(call('key')),
+        # only socks data should have multiple login information
+        valmap(lambda logins: output_dir(logins[0])),
+    )
 
     if is_socks:
         if not proxy_host:
@@ -540,8 +554,10 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
         )
 
     def enum_shares_and_output(data: LoginData):
-        output_dir = output_dirs[data.user]
-        output_path = output_dir / f"{data.ip}.txt"
+        output_dir = output_dirs[data.key()]
+        output_stem = f'{data.ip}'
+        json_path = output_dir / f"{output_stem}.json"
+        output_path = output_dir / f"{output_stem}.txt"
         if output_path.exists() and not force:
             log.info(f'{output_path} exists... skipping.')
             return 
@@ -554,7 +570,6 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
         def touch_output():
             output_dir.mkdir(exist_ok=True, parents=True)
             output_path.write_text('')
-
 
         client = client_f(data.ip)
         if client is None:
@@ -569,12 +584,25 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
             )
             touch_output()
             return
+        except socket.error as socket_err:
+            if 'timed out' in str(socket_err):
+                pass
+            else:
+                log.exception(
+                    f'socket.error getting shares with {data}'
+                )
         finally:
             client.close()
 
 
         output_dir.mkdir(exist_ok=True, parents=True)
         output_path.write_text('')
+
+        pipe(
+            metadata,
+            json_dumps,
+            json_path.write_text,
+        )
         
         return pipe(
             metadata,
@@ -589,14 +617,33 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
         tuple,
     )
 
+    @curry
+    def as_final_path(ext: str, dir_path: Path) -> Path:
+        stem = dir_path.name[1:] # remove the dot prefix
+        parent_path = dir_path.resolve().parent.parent
+        return parent_path / f'{stem}.{ext}'
+    as_txt = as_final_path('txt')
+    as_json = as_final_path('json')
+
+    # pipe(
+    #     output_dirs.values(),
+    #     set,
+    #     mapcat(lambda p: p.glob('*.json'))
+    # )
+
     return pipe(
-        output_dirs.values(),
-        set,
-        mapcat(lambda p: p.glob('*.txt')),
-        map(slurp),
-        map(strip()),
-        filter(None),
-        '\n'.join,
+        output_dirs,
+        valmap(lambda dir_path: set(dir_path.glob('*.txt'))),
+        valmap(lambda paths: pipe(
+            paths, 
+            map(slurp), 
+            map(strip()), 
+            filter(None),
+            '\n'.join,
+        )),
+        items,
+        vmap(lambda dir_path, content: as_txt(dir_path).write_text(content)),
+        tuple,
     )
 
 
