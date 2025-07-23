@@ -633,16 +633,32 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
 
     return pipe(
         output_dirs,
-        valmap(lambda dir_path: (dir_path, set(dir_path.glob('*.txt')))),
-        valmap(vcall(lambda dir_path, paths: (dir_path, pipe(
-            paths, 
-            map(slurp), 
-            map(strip()), 
-            filter(None),
-            '\n'.join,
-        )))),
+        valmap(lambda dir_path: (
+            dir_path, 
+            set(dir_path.glob('*.txt')),
+            set(dir_path.glob('*.json')),
+        )),
+        valmap(vcall(lambda dir_path, txt_paths, json_paths: (
+            dir_path, 
+            pipe(
+                txt_paths, 
+                map(slurp), 
+                map(strip()), 
+                filter(None),
+                '\n'.join,
+            ),
+            pipe(
+                json_paths, 
+                mapcat(json_slurp), 
+                tuple,
+                json_dumps
+            ),
+        ))),
         values,
-        vmap(lambda dir_path, content: as_txt(dir_path).write_text(content)),
+        vmap(lambda dir_path, txt_content, json_content: (
+            as_txt(dir_path).write_text(txt_content),
+            as_json(dir_path).write_text(json_content),
+        )),
         tuple,
     )
 
