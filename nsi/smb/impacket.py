@@ -425,10 +425,6 @@ def get_shares_metadata(client: SMBConnection, *,
 
 
 
-class FileTypeDict(T.TypedDict):
-    ext: str | None
-    content: str | None
-
 def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
     if is_dict(path):
         return path
@@ -446,8 +442,13 @@ def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
         return None
     return file_data(share, files[0], path.parent)
 
+class FileType(T.TypedDict):
+    file: FileData
+    ext: str | None
+    content: str | None
+
 @curry
-def get_file_type(client: SMBConnection, file: str|Path|FileData, share: str = None) -> FileTypeDict:
+def get_file_type(client: SMBConnection, file: str|Path|FileData, share: str = None) -> FileType:
     if is_dict(file):
         share = file['share']
     else:
@@ -460,10 +461,11 @@ def get_file_type(client: SMBConnection, file: str|Path|FileData, share: str = N
             return None
 
     if file['is_dir']:
-        return {
+        return FileType({
+            'file': file,
             'content': 'directory', 'ext': None, 
             'write': is_dir_writeable(client, share, file['path']),
-        }
+        })
 
     tid = get_tree_id(client, share)
     fid = client.openFile(
@@ -488,10 +490,11 @@ def get_file_type(client: SMBConnection, file: str|Path|FileData, share: str = N
         else:
             file_type = output.split(':', maxsplit=1)[1].strip()
 
-    return {
+    return FileType({
+        'file': file,
         'content': file_type,
         'ext': type_from_ext(file['name']),
-    }
+    })
 
 
 @curry
