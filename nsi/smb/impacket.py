@@ -620,7 +620,7 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
     @curry
     def as_final_path(ext: str, dir_path: Path) -> Path:
         stem = dir_path.name[1:] # remove the dot prefix
-        parent_path = dir_path.resolve().parent.parent
+        parent_path = dir_path.resolve().parent
         return parent_path / f'{stem}.{ext}'
     as_txt = as_final_path('txt')
     as_json = as_final_path('json')
