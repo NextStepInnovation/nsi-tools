@@ -206,6 +206,7 @@ def split_ntlm(hash: str) -> T.Tuple[str|None, str|None]:
         nt = hash
     return lm, nt
 
+
 acceptable_socket_errors_re = re.compile(
     r'timed out|No route to host'
 )
@@ -217,7 +218,7 @@ def get_client(host: str, *,
         client = SMBConnection(host, host)
         _lmhash, nthash = split_ntlm(hashes)
         success = client.login(
-            user or '', password or '', domain=domain or '', #nthash=nthash or '',
+            user or '', password or '', domain=domain or '', nthash=nthash or '',
         )
         if success:
             return client
@@ -264,6 +265,10 @@ def win_list_dir(unix_path: Path) -> str:
     dir = win_dir(unix_path) + '*'
     return dir
 
+class FileType(T.TypedDict):
+    ext: str
+    content: str
+
 class FileData(T.TypedDict):
     share: str
     is_dir: bool
@@ -279,6 +284,10 @@ class FileData(T.TypedDict):
     atime: datetime
     files: T.Sequence['FileData']
     dirs: T.Sequence['FileData']
+
+    # if get_extended_meta is run 
+    type: FileType
+    write: bool
 
 new_file_data = lambda d: FileData(d)
 
@@ -382,6 +391,7 @@ def is_share_readable(client: SMBConnection, share: str|SHARE_INFO_1):
 
 @curry
 def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData):
+    share, file = _get_share_file(client, share, file)
     tid = get_tree_id(client, share)
     if is_dict(path):
         path = path['path']
@@ -442,30 +452,32 @@ def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
         return None
     return file_data(share, files[0], path.parent)
 
-class FileType(T.TypedDict):
-    file: FileData
-    ext: str | None
-    content: str | None
+class ArgumentError(Exception):
+    pass
 
-@curry
-def get_file_type(client: SMBConnection, file: str|Path|FileData, share: str = None) -> FileType:
-    if is_dict(file):
+def _get_share_file(client: SMBConnection, share: str|Path|FileData, 
+                    file: str|Path|FileData):
+    if is_dict(share):
+        file = share
         share = file['share']
     else:
-        if share is None:
-            raise AttributeError(
-                f'If file is not an instance of FileData, then must provide share'
+        if file is None:
+            raise ArgumentError(
+                'If share is not an instance of FileData, then must '
+                'provide file argument path/FileData'
             )
         file = get_file_data(client, share, file)
-        if not file:
-            return None
+    return share, file
+@curry
+def get_extended_meta(client: SMBConnection, share: str|Path|FileData, 
+                      file: str|Path|FileData = None) -> FileData:
+    share, file = _get_share_file(client, share, file)
 
     if file['is_dir']:
-        return FileType({
-            'file': file,
+        return merge(file, FileType({
             'content': 'directory', 'ext': None, 
             'write': is_dir_writeable(client, share, file['path']),
-        })
+        }))
 
     tid = get_tree_id(client, share)
     fid = client.openFile(
