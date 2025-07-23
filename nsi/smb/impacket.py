@@ -206,6 +206,9 @@ def split_ntlm(hash: str) -> T.Tuple[str|None, str|None]:
         nt = hash
     return lm, nt
 
+acceptable_socket_errors_re = re.compile(
+    r'timed out|No route to host'
+)
 @curry
 def get_client(host: str, *,
                user: str = None, password: str = None, hashes: str = None, 
@@ -225,16 +228,18 @@ def get_client(host: str, *,
         match parse_session_error(err):
             case {'name': ('STATUS_ACCESS_DENIED'|
                            'STATUS_TRUSTED_RELATIONSHIP_FAILURE'|
-                           'STATUS_NO_LOGON_SERVERS')}:
+                           'STATUS_NO_LOGON_SERVERS'|
+                           'STATUS_NETLOGON_NOT_STARTED'|
+                           'STATUS_LOGON_FAILURE')}:
                 pass
             case other:
                 log.error(
-                    f'Error with SMB session on host {host}: {other}'
+                    f'Error creating SMB session on host {host}: {other}'
                 )
     except NetBIOSTimeout as to_err:
         log.debug(f'NetBIOS Timeout on {host}')
     except socket.error as socket_err:
-        if 'timed out' in str(socket_err):
+        if acceptable_socket_errors_re.search(str(socket_err)):
             pass
         else:
             log.exception(
@@ -260,6 +265,7 @@ def win_list_dir(unix_path: Path) -> str:
     return dir
 
 class FileData(T.TypedDict):
+    share: str
     is_dir: bool
     is_file: bool
     parent: Path | None
@@ -274,14 +280,15 @@ class FileData(T.TypedDict):
     files: T.Sequence['FileData']
     dirs: T.Sequence['FileData']
 
-new_file_data = lambda d: d
+new_file_data = lambda d: FileData(d)
 
 @curry
 def child_path(path: Path, child: SharedFile) -> Path:
     return path / child.get_longname()
 
-def file_data(file: SharedFile, parent_path: Path) -> FileData:
+def file_data(share: str, file: SharedFile, parent_path: Path) -> FileData:
     return new_file_data({
+        'share': share,
         'is_dir': False,
         'is_file': True,
         'parent': parent_path,
@@ -296,9 +303,10 @@ def file_data(file: SharedFile, parent_path: Path) -> FileData:
     })
 
 is_path = lambda v: isinstance(v, Path)
-def dir_data(dir: SharedFile|Path, parent_path: Path,
+def dir_data(share: str, dir: SharedFile|Path, parent_path: Path,
              files: T.Sequence[Path], dirs: T.Sequence[Path]) -> FileData:
     return new_file_data({
+        'share': share,
         'is_dir': True,
         'is_file': False,
         'parent': parent_path,
@@ -345,7 +353,7 @@ def list_dir(client: SMBConnection, share: str,
         filter(lambda f: not f.is_directory()),
     )
     for child in child_files:
-        yield file_data(child, path)
+        yield file_data(share, child, path)
 
     child_dirs: T.Sequence[Path] = pipe(
         children,
@@ -353,7 +361,7 @@ def list_dir(client: SMBConnection, share: str,
         filter(lambda f: f.get_longname() not in {'.', '..'}),
     )
     for child in child_dirs:
-        yield dir_data(child, path, [], [])
+        yield dir_data(share, child, path, [], [])
 
 _readable = {}
 @curry
@@ -414,6 +422,104 @@ def get_shares_metadata(client: SMBConnection, *,
             ),
         })
         yield meta
+
+
+
+class FileTypeDict(T.TypedDict):
+    ext: str | None
+    content: str | None
+
+def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
+    if is_dict(path):
+        return path
+    try:
+        path = Path(path)
+        files = client.listPath(share, win_path(path))
+    except SessionError as err:
+        match err.getErrorCode():
+            case 0xc000000f:
+                log.error(f'No file at {path}')
+            case 0xc00000cc:
+                log.error(f'No share at {share} for {client.getRemoteHost()}')
+            case other:
+                log.error(f'Error getting path {err}')
+        return None
+    return file_data(share, files[0], path.parent)
+
+@curry
+def get_file_type(client: SMBConnection, file: str|Path|FileData, share: str = None) -> FileTypeDict:
+    if is_dict(file):
+        share = file['share']
+    else:
+        if share is None:
+            raise AttributeError(
+                f'If file is not an instance of FileData, then must provide share'
+            )
+        file = get_file_data(client, share, file)
+        if not file:
+            return None
+
+    if file['is_dir']:
+        return {'content': 'directory', 'ext': None}
+
+    tid = get_tree_id(client, share)
+    fid = client.openFile(
+        tid, win_path(file['path']), desiredAccess=smb.FILE_READ_DATA,
+        fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
+    )
+
+    file_type = 'unknown'
+
+    with tempfile.NamedTemporaryFile(suffix=file['path'].suffix) as temp:
+        content = client.readFile(tid, fid, bytesToRead=2**10)
+
+        temp.write(content)
+        temp.flush()
+
+        output: str = ...
+        status, output = shell.shell(
+            f'file {temp.name}', echo=False,
+        )
+        if status:
+            log.error(f'Received status code {status} from file command')
+        else:
+            file_type = output.split(':', maxsplit=1)[1].strip()
+
+    return {
+        'content': file_type,
+        'ext': type_from_ext(file['name']),
+    }
+
+
+@curry
+def dir_tree(client: SMBConnection, share: str, path: Path=None,
+             parent: FileData|None = None) -> T.Iterator[FileData]:
+    path = Path(path or '/')
+    children: T.Sequence[FileData] = pipe(
+        list_dir(client, share, path), 
+        tuple,
+    )
+
+    child_files = pipe(children, filter(complement(get('is_dir'))), tuple)
+    child_dirs = pipe(children, filter(get('is_dir')), tuple)
+
+    parent = dir_data(
+        share,
+        path, (parent or {}).get('path'),
+        files=pipe(child_files, mget('path'), tuple),
+        dirs=pipe(child_dirs, mget('path'), tuple),
+    )
+    
+    log.info(str(parent['path']))
+    yield parent
+
+    yield from child_files
+
+    for child in child_dirs:
+        yield from dir_tree(
+            client, share, path=child['path'], parent=parent,
+        )
+
 
 
 class LoginData(T.NamedTuple):
@@ -585,7 +691,7 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
             touch_output()
             return
         except socket.error as socket_err:
-            if 'timed out' in str(socket_err):
+            if acceptable_socket_errors_re.search(str(socket_err)):
                 pass
             else:
                 log.exception(
@@ -661,92 +767,4 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
         )),
         tuple,
     )
-
-
-class FileTypeDict(T.TypedDict):
-    ext: str | None
-    content: str | None
-
-def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
-    if is_dict(path):
-        return path
-    try:
-        path = Path(path)
-        files = client.listPath(share, win_path(path))
-    except SessionError as err:
-        match err.getErrorCode():
-            case 0xc000000f:
-                log.error(f'No file at {path}')
-            case 0xc00000cc:
-                log.error(f'No share at {share} for {client.getRemoteHost()}')
-            case other:
-                log.error(f'Error getting path {err}')
-        return None
-    return file_data(files[0], path.parent)
-
-@curry
-def get_file_type(client: SMBConnection, share: str, file: str|Path|FileData) -> FileTypeDict:
-    file = get_file_data(client, share, file)
-    if not file:
-        return None
-
-    if file['is_dir']:
-        return {'content': 'directory', 'ext': None}
-
-    tid = get_tree_id(client, share)
-    fid = client.openFile(
-        tid, win_path(file['path']), desiredAccess=smb.FILE_READ_DATA,
-        fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
-    )
-
-    file_type = 'unknown'
-
-    with tempfile.NamedTemporaryFile(suffix=file['path'].suffix) as temp:
-        content = client.readFile(tid, fid, bytesToRead=2**10)
-
-        temp.write(content)
-        temp.flush()
-
-        output: str = ...
-        status, output = shell.shell(
-            f'file {temp.name}', echo=False,
-        )
-        if status:
-            log.error(f'Received status code {status} from file command')
-        else:
-            file_type = output.split(':', maxsplit=1)[1].strip()
-
-    return {
-        'content': file_type,
-        'ext': type_from_ext(file['name']),
-    }
-
-
-@curry
-def dir_tree(client: SMBConnection, share: str, path: Path=None,
-             parent: FileData|None = None) -> T.Iterator[FileData]:
-    path = Path(path or '/')
-    children: T.Sequence[FileData] = pipe(
-        list_dir(client, share, path), 
-        tuple,
-    )
-
-    child_files = pipe(children, filter(complement(get('is_dir'))), tuple)
-    child_dirs = pipe(children, filter(get('is_dir')), tuple)
-
-    parent = dir_data(
-        path, (parent or {}).get('path'),
-        files=pipe(child_files, mget('path'), tuple),
-        dirs=pipe(child_dirs, mget('path'), tuple),
-    )
-    
-    log.info(str(parent['path']))
-    yield parent
-
-    yield from child_files
-
-    for child in child_dirs:
-        yield from dir_tree(
-            client, share, path=child['path'], parent=parent,
-        )
 
