@@ -486,6 +486,7 @@ def _get_share_file(client: SMBConnection, share: str|Path|FileData,
         file = get_file_data(client, share, file)
     return share, file
 
+@curry
 def is_file_writeable(client: SMBConnection, share: str|Path|FileData, 
                       file: str|Path|FileData = None):
     share, file = _get_share_file(client, share, file)
@@ -501,7 +502,12 @@ def is_file_writeable(client: SMBConnection, share: str|Path|FileData,
         )
         client.closeFile(tid, fid)
     except SessionError as smb_error:
-        log.exception(file)
+        match parse_session_error(smb_error):
+            case {'name': ('STATUS_ACCESS_DENIED'|
+                           'STATUS_SHARING_VIOLATION')}:
+                pass
+            case other:
+                log.exception(f'SMB error testing file write {file}')
         return False
     except Exception as error:
         log.exception(file)
