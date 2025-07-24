@@ -495,7 +495,7 @@ def is_file_writeable(client: SMBConnection, share: str|Path|FileData,
         fid = client.openFile(
             tid, win_path(file['path']), 
             desiredAccess=(
-                smb.FILE_WRITE_DATA
+                smb.GENERIC_WRITE
             ),
             # fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
             #creationOption=smb.
@@ -520,10 +520,12 @@ def get_extended_meta(client: SMBConnection, share: str|Path|FileData,
     share, file = _get_share_file(client, share, file)
 
     if file['is_dir']:
-        return merge(file, FileType({
+        return merge(file, {
+            'type': FileType({
             'content': 'directory', 'ext': None, 
             'write': is_dir_writeable(client, share, file['path']),
-        }))
+        })})
+
 
     tid = get_tree_id(client, share)
     fid = client.openFile(
@@ -549,7 +551,6 @@ def get_extended_meta(client: SMBConnection, share: str|Path|FileData,
             file_type = output.split(':', maxsplit=1)[1].strip()
 
     return FileType({
-        'file': file,
         'content': file_type,
         'ext': type_from_ext(file['name']),
     })
