@@ -489,6 +489,19 @@ def _get_share_file(client: SMBConnection, share: str|Path|FileData,
 def is_file_writeable(client: SMBConnection, share: str|Path|FileData, 
                       file: str|Path|FileData = None):
     share, file = _get_share_file(client, share, file)
+    tid = get_tree_id(client, share)
+    try:
+        fid = client.openFile(
+            tid, win_path(file['path']), desiredAccess=smb.FILE_WRITE_DATA,
+            fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
+        )
+    except SessionError as smb_error:
+        log.exception(file)
+        return False
+    except Exception as error:
+        log.exception(file)
+        return False
+    return True
 
 @curry
 def get_extended_meta(client: SMBConnection, share: str|Path|FileData, 
