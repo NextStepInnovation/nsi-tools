@@ -231,7 +231,9 @@ def get_client(host: str, *,
                user: str = None, password: str = None, hashes: str = None, 
                domain: str = None) -> SMBConnection | None:
     try:
-        client = SMBConnection(host, host)
+        client = SMBConnection(
+            host, host, timeout=2,
+        )
         _lmhash, nthash = split_ntlm(hashes)
         success = client.login(
             user or '', password or '', domain=domain or '', nthash=nthash or '',
@@ -587,13 +589,13 @@ def format_share(share: ShareMetadata):
         '\t'.join,
     )
 
-def enum_shares_and_output(data: LoginData, output_dirs: dict, force: bool = False):
-    def key(data: LoginData) -> T.Tuple[str, str, str, str, bool]:
-        return (
-            data.domain, data.user, data.password, data.hashes, data.socks,
-        )
+def output_key(data: LoginData) -> T.Tuple[str, str, str, str, bool]:
+    return (
+        data.domain, data.user, data.password, data.hashes, data.socks,
+    )
 
-    output_dir = output_dirs[key(data)]
+def enum_shares_and_output(data: LoginData, output_dirs: dict, force: bool = False):
+    output_dir = output_dirs[output_key(data)]
     output_stem = f'{data.ip}'
     json_path = output_dir / f"{output_stem}.json"
     output_path = output_dir / f"{output_stem}.txt"
@@ -716,7 +718,7 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
 
     output_dirs = pipe(
         login_data,
-        groupby(call('key')),
+        groupby(output_key),
         # only socks data should have multiple login information
         valmap(lambda logins: output_dir(logins[0], output_dir_path=output_dir_path)),
     )
