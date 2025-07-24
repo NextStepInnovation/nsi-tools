@@ -594,6 +594,7 @@ def output_key(data: LoginData) -> T.Tuple[str, str, str, str, bool]:
         data.domain, data.user, data.password, data.hashes, data.socks,
     )
 
+@curry
 def enum_shares_and_output(data: LoginData, output_dirs: dict, force: bool = False):
     output_dir = output_dirs[output_key(data)]
     output_stem = f'{data.ip}'
