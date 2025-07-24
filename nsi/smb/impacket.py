@@ -492,9 +492,14 @@ def is_file_writeable(client: SMBConnection, share: str|Path|FileData,
     tid = get_tree_id(client, share)
     try:
         fid = client.openFile(
-            tid, win_path(file['path']), desiredAccess=smb.FILE_WRITE_DATA,
-            fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
+            tid, win_path(file['path']), 
+            desiredAccess=(
+                smb.FILE_WRITE_DATA
+            ),
+            # fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
+            #creationOption=smb.
         )
+        client.closeFile(tid, fid)
     except SessionError as smb_error:
         log.exception(file)
         return False
