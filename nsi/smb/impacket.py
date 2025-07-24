@@ -347,7 +347,7 @@ def dir_data(share: str, dir: SharedFile|Path, parent_path: Path,
 def share_key(client: SMBConnection, share: str):
     host = client.getRemoteHost()
     creds = client.getCredentials()
-    return (host,) + creds + (share,)
+    return (hash(client), host,) + creds + (share,)
 
 _tree_ids = {}
 def get_tree_id(client: SMBConnection, share: str) -> int:
@@ -485,6 +485,11 @@ def _get_share_file(client: SMBConnection, share: str|Path|FileData,
             )
         file = get_file_data(client, share, file)
     return share, file
+
+def is_file_writeable(client: SMBConnection, share: str|Path|FileData, 
+                      file: str|Path|FileData = None):
+    share, file = _get_share_file(client, share, file)
+
 @curry
 def get_extended_meta(client: SMBConnection, share: str|Path|FileData, 
                       file: str|Path|FileData = None) -> FileData:
