@@ -206,6 +206,22 @@ def split_ntlm(hash: str) -> T.Tuple[str|None, str|None]:
         nt = hash
     return lm, nt
 
+class LoginData(T.NamedTuple):
+    domain: str 
+    user: str
+    password: str
+    hashes: str
+    ip: str
+    socks: bool
+
+    def ntlm(self):
+        return split_ntlm(self.hashes)
+    
+    def nt(self):
+        return self.ntlm()[1]
+    def lm(self):
+        return self.ntlm()[0]
+
 
 acceptable_socket_errors_re = re.compile(
     r'timed out|No route to host'
@@ -391,7 +407,6 @@ def is_share_readable(client: SMBConnection, share: str|SHARE_INFO_1):
 
 @curry
 def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData):
-    share, file = _get_share_file(client, share, file)
     tid = get_tree_id(client, share)
     if is_dict(path):
         path = path['path']
@@ -539,18 +554,101 @@ def dir_tree(client: SMBConnection, share: str, path: Path=None,
         )
 
 
-
-class LoginData(T.NamedTuple):
-    domain: str 
-    user: str
-    password: str
-    hashes: str
-    ip: str
-    socks: bool
-    def key(self) -> T.Tuple[str, str, str, str, bool]:
-        return (
-            self.domain, self.user, self.password, self.hashes, self.socks,
+def output_dir(data: LoginData, output_dir_path: Path = None):
+    dir_path = Path(output_dir_path or '.')
+    if data.socks:
+        return dir_path / (
+            f'.smb-shares-{data.user}-SOCKS'
         )
+    user = data.user or "NULL"
+    pw_or_hash = (nt(data.password) if data.password else data.hashes) or 'NULL'
+    return dir_path / (
+        f'.smb-shares-{user}-{pw_or_hash}'
+    )
+
+def format_type(type: T.Set[str]):
+    type = list(type)
+    special = 'Special' in type
+    if special:
+        type.remove('Special')
+    return f"{type[0]}{'*' if special else ''}"
+
+def format_share(share: ShareMetadata):
+    host, name, type, remark, read, write = pipe(
+        ['host', 'name', 'type', 'remark', 'read', 'write'],
+        map(share.get),
+        list,
+    )
+    type = format_type(type)
+    read = 'READ' if read else 'NO-ACCESS'
+    write = 'WRITE' if write else ''
+    return pipe(
+        [host, name, type, remark, read, write],
+        '\t'.join,
+    )
+
+def enum_shares_and_output(data: LoginData, output_dirs: dict, force: bool = False):
+    def key(data: LoginData) -> T.Tuple[str, str, str, str, bool]:
+        return (
+            data.domain, data.user, data.password, data.hashes, data.socks,
+        )
+
+    output_dir = output_dirs[key(data)]
+    output_stem = f'{data.ip}'
+    json_path = output_dir / f"{output_stem}.json"
+    output_path = output_dir / f"{output_stem}.txt"
+    if output_path.exists() and not force:
+        log.info(f'{output_path} exists... skipping.')
+        return 
+
+    client_f = get_client(
+        user=data.user, password=data.password, hashes=data.hashes, 
+        domain=data.domain,
+    )
+
+    def touch_output():
+        output_dir.mkdir(exist_ok=True, parents=True)
+        output_path.write_text('')
+
+    client = client_f(data.ip)
+    if client is None:
+        touch_output()
+        return
+
+    try:
+        metadata = tuple(get_shares_metadata(client))
+    except SessionError as error:
+        log.error(
+            f'Error getting shares with {data}: {parse_session_error(error)}'
+        )
+        touch_output()
+        return
+    except socket.error as socket_err:
+        if acceptable_socket_errors_re.search(str(socket_err)):
+            pass
+        else:
+            log.exception(
+                f'socket.error getting shares with {data}'
+            )
+    finally:
+        client.close()
+
+
+    output_dir.mkdir(exist_ok=True, parents=True)
+    output_path.write_text('')
+
+    pipe(
+        metadata,
+        json_dumps,
+        json_path.write_text,
+    )
+    
+    return pipe(
+        metadata,
+        map(format_share),
+        '\n'.join,
+        output_path.write_text,
+    )
 
 ntlmrelayx_socks_re = re.compile(
     r'SMB\s+(?P<ip>\d+\.\d+\.\d+\.\d+)\s+(?P<domain>\w+?)/(?P<user>.+?)\s+'
@@ -616,30 +714,11 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
          if not hashes else f'   nthash: {hashes}')
     )
 
-    ld_hashes = pipe(
-        login_data,
-        groupby(lambda data: data.user),
-        valmap(lambda D: pipe(D, map(map_t(str)), map('\t'.join), '\n'.join, md5)),
-    )
-
-    def output_dir(data: LoginData):
-        ld_hash = ld_hashes[data.user]
-        dir_path = Path(output_dir_path or '.')
-        if data.socks:
-            return dir_path / (
-                f'.smb-shares-{data.user}-SOCKS'
-            )
-        user = data.user or "NULL"
-        pw_or_hash = (nt(data.password) if data.password else data.hashes) or 'NULL'
-        return dir_path / (
-            f'.smb-shares-{user}-{pw_or_hash}'
-        )
-
     output_dirs = pipe(
         login_data,
         groupby(call('key')),
         # only socks data should have multiple login information
-        valmap(lambda logins: output_dir(logins[0])),
+        valmap(lambda logins: output_dir(logins[0], output_dir_path=output_dir_path)),
     )
 
     if is_socks:
@@ -656,88 +735,11 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
     )
     pmap = parallel.thread_map(**pmap_kw)
 
-    def format_type(type: T.Set[str]):
-        type = list(type)
-        special = 'Special' in type
-        if special:
-            type.remove('Special')
-        return f"{type[0]}{'*' if special else ''}"
 
-    def format_share(share: ShareMetadata):
-        host, name, type, remark, read, write = pipe(
-            ['host', 'name', 'type', 'remark', 'read', 'write'],
-            map(share.get),
-            list,
-        )
-        type = format_type(type)
-        read = 'READ' if read else 'NO-ACCESS'
-        write = 'WRITE' if write else ''
-        return pipe(
-            [host, name, type, remark, read, write],
-            '\t'.join,
-        )
-
-    def enum_shares_and_output(data: LoginData):
-        output_dir = output_dirs[data.key()]
-        output_stem = f'{data.ip}'
-        json_path = output_dir / f"{output_stem}.json"
-        output_path = output_dir / f"{output_stem}.txt"
-        if output_path.exists() and not force:
-            log.info(f'{output_path} exists... skipping.')
-            return 
-
-        client_f = get_client(
-            user=data.user, password=data.password, hashes=data.hashes, 
-            domain=data.domain,
-        )
-
-        def touch_output():
-            output_dir.mkdir(exist_ok=True, parents=True)
-            output_path.write_text('')
-
-        client = client_f(data.ip)
-        if client is None:
-            touch_output()
-            return
-
-        try:
-            metadata = tuple(get_shares_metadata(client))
-        except SessionError as error:
-            log.error(
-                f'Error getting shares with {data}: {parse_session_error(error)}'
-            )
-            touch_output()
-            return
-        except socket.error as socket_err:
-            if acceptable_socket_errors_re.search(str(socket_err)):
-                pass
-            else:
-                log.exception(
-                    f'socket.error getting shares with {data}'
-                )
-        finally:
-            client.close()
-
-
-        output_dir.mkdir(exist_ok=True, parents=True)
-        output_path.write_text('')
-
-        pipe(
-            metadata,
-            json_dumps,
-            json_path.write_text,
-        )
-        
-        return pipe(
-            metadata,
-            map(format_share),
-            '\n'.join,
-            output_path.write_text,
-        )
 
     pipe(
         login_data,
-        pmap(enum_shares_and_output),
+        pmap(enum_shares_and_output(output_dirs=output_dirs, force=force)),
         tuple,
     )
 
