@@ -306,6 +306,7 @@ class FileData(T.TypedDict):
     # if get_extended_meta is run 
     type: FileType
     write: bool
+    read: bool
 
 new_file_data = lambda d: FileData(d)
 
@@ -390,22 +391,25 @@ def list_dir(client: SMBConnection, share: str,
     for child in child_dirs:
         yield dir_data(share, child, path, [], [])
 
-_readable = {}
+class ArgumentError(Exception):
+    pass
+
+_readable_shares = {}
 @curry
 def is_share_readable(client: SMBConnection, share: str|SHARE_INFO_1):
     if isinstance(share, SHARE_INFO_1):
         share = get_share_name(share)
     key = share_key(client, share)
-    if key in _readable:
-        return _readable[key]
+    if key in _readable_shares:
+        return _readable_shares[key]
     
     try:
         get_tree_id(client, share)
-        _readable[key] = True
+        _readable_shares[key] = True
     except SessionError as err:
-        _readable[key] = False
+        _readable_shares[key] = False
 
-    return _readable[key]
+    return _readable_shares[key]
 
 @curry
 def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData):
@@ -420,6 +424,44 @@ def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData)
         return True
     except SessionError as serr:
         return False
+
+def _get_share_file(client: SMBConnection, share: str|Path|FileData, 
+                    file: str|Path|FileData):
+    if is_dict(share):
+        file = share
+        share = file['share']
+    else:
+        if file is None:
+            raise ArgumentError(
+                'If share is not an instance of FileData, then must '
+                'provide file argument path/FileData'
+            )
+        file = get_file_data(client, share, file)
+    return share, file
+
+@curry
+def is_file_writeable(client: SMBConnection, share: str|Path|FileData, 
+                      file: str|Path|FileData = None):
+    share, file = _get_share_file(client, share, file)
+    tid = get_tree_id(client, share)
+    try:
+        fid = client.openFile(
+            tid, win_path(file['path']), 
+            desiredAccess=smb.GENERIC_WRITE,
+        )
+        client.closeFile(tid, fid)
+    except SessionError as smb_error:
+        match parse_session_error(smb_error):
+            case {'name': ('STATUS_ACCESS_DENIED'|
+                           'STATUS_SHARING_VIOLATION')}:
+                pass
+            case other:
+                log.exception(f'SMB error testing file write {file}')
+        return False
+    except Exception as error:
+        log.exception(file)
+        return False
+    return True
 
 class ShareMetadata(T.TypedDict):
     host: str
@@ -469,51 +511,6 @@ def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
         return None
     return file_data(share, files[0], path.parent)
 
-class ArgumentError(Exception):
-    pass
-
-def _get_share_file(client: SMBConnection, share: str|Path|FileData, 
-                    file: str|Path|FileData):
-    if is_dict(share):
-        file = share
-        share = file['share']
-    else:
-        if file is None:
-            raise ArgumentError(
-                'If share is not an instance of FileData, then must '
-                'provide file argument path/FileData'
-            )
-        file = get_file_data(client, share, file)
-    return share, file
-
-@curry
-def is_file_writeable(client: SMBConnection, share: str|Path|FileData, 
-                      file: str|Path|FileData = None):
-    share, file = _get_share_file(client, share, file)
-    tid = get_tree_id(client, share)
-    try:
-        fid = client.openFile(
-            tid, win_path(file['path']), 
-            desiredAccess=(
-                smb.GENERIC_WRITE
-            ),
-            # fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
-            #creationOption=smb.
-        )
-        client.closeFile(tid, fid)
-    except SessionError as smb_error:
-        match parse_session_error(smb_error):
-            case {'name': ('STATUS_ACCESS_DENIED'|
-                           'STATUS_SHARING_VIOLATION')}:
-                pass
-            case other:
-                log.exception(f'SMB error testing file write {file}')
-        return False
-    except Exception as error:
-        log.exception(file)
-        return False
-    return True
-
 @curry
 def get_extended_meta(client: SMBConnection, share: str|Path|FileData, 
                       file: str|Path|FileData = None) -> FileData:
@@ -522,37 +519,54 @@ def get_extended_meta(client: SMBConnection, share: str|Path|FileData,
     if file['is_dir']:
         return merge(file, {
             'type': FileType({
-            'content': 'directory', 'ext': None, 
-            'write': is_dir_writeable(client, share, file['path']),
-        })})
-
+                'content': 'directory', 'ext': None, 
+                'write': is_dir_writeable(client, share, file['path']),
+            })
+        })
 
     tid = get_tree_id(client, share)
-    fid = client.openFile(
-        tid, win_path(file['path']), desiredAccess=smb.FILE_READ_DATA,
-        fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
-    )
+
+    can_read_file: bool = False
+    try:
+        fid = client.openFile(
+            tid, win_path(file['path']), desiredAccess=smb.FILE_READ_DATA,
+            fileAttributes=smb.ATTR_NORMAL, creationDisposition=smb.FILE_OPEN,
+        )
+        can_read_file = True
+    except SessionError as smb_error:
+        match parse_session_error(smb_error):
+            case {'name': ('STATUS_ACCESS_DENIED'|
+                           'STATUS_SHARING_VIOLATION')}:
+                pass
+            case other:
+                log.exception(f'SMB error testing file write {file}')
+    except Exception as error:
+        log.exception(f'Unknown exception trying to open file: {file}')
 
     file_type = 'unknown'
+    if can_read_file:
+        with tempfile.NamedTemporaryFile(suffix=file['path'].suffix) as temp:
+            content = client.readFile(tid, fid, bytesToRead=2**10)
 
-    with tempfile.NamedTemporaryFile(suffix=file['path'].suffix) as temp:
-        content = client.readFile(tid, fid, bytesToRead=2**10)
+            temp.write(content)
+            temp.flush()
 
-        temp.write(content)
-        temp.flush()
+            output: str = ...
+            status, output = shell.shell(
+                f'file {temp.name}', echo=False,
+            )
+            if status:
+                log.error(f'Received status code {status} from file command')
+            else:
+                file_type = output.split(':', maxsplit=1)[1].strip()
 
-        output: str = ...
-        status, output = shell.shell(
-            f'file {temp.name}', echo=False,
-        )
-        if status:
-            log.error(f'Received status code {status} from file command')
-        else:
-            file_type = output.split(':', maxsplit=1)[1].strip()
-
-    return FileType({
-        'content': file_type,
-        'ext': type_from_ext(file['name']),
+    return merge(file, {
+        'type': FileType({
+            'content': file_type,
+            'ext': type_from_ext(file['name']),
+        }),
+        'write': is_file_writeable(client, file),
+        'read': can_read_file,
     })
 
 
