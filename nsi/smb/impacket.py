@@ -422,6 +422,20 @@ def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData)
         return True
     except SessionError as serr:
         return False
+    
+@curry
+def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData):
+    tid = get_tree_id(client, share)
+    if is_dict(path):
+        path = path['path']
+    file_path = win_path(Path(path) / f'nsi-dir-write-test-{random_str(16)}')
+    try:
+        fid = client.createFile(tid, file_path)
+        client.closeFile(tid, fid)
+        client.deleteFile(share, file_path)
+        return True
+    except SessionError as serr:
+        return False
 
 def _get_share_file(client: SMBConnection, share: str|Path|FileData, 
                     file: str|Path|FileData):
@@ -518,8 +532,9 @@ def get_extended_meta(client: SMBConnection, share: str|Path|FileData,
         return merge(file, {
             'type': FileType({
                 'content': 'directory', 'ext': None, 
-                'write': is_dir_writeable(client, share, file['path']),
-            })
+            }),
+            'write': is_dir_writeable(client, share, file['path']),
+            'read': True,
         })
 
     tid = get_tree_id(client, share)
