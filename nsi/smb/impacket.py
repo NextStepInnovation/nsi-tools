@@ -173,7 +173,6 @@ def parse_session_error(err: SessionError):
     if err_match:
         error = err_match.groupdict()['error']
         for regex in smb_err_re:
-            # log.info(regex)
             m = regex.search(error)
             if m:
                 yield m.groupdict()
@@ -367,7 +366,6 @@ def list_dir(client: SMBConnection, share: str,
     path = Path(path or '/')
     children: T.Sequence[SharedFile] = ...
     try:
-        # log.info(win_list_dir(path))
         children = client.listPath(share, win_list_dir(path))
     except SessionError as err:
         error = parse_session_error(err)
@@ -589,7 +587,6 @@ def dir_tree(client: SMBConnection, share: str, path: Path=None,
         dirs=pipe(child_dirs, mget('path'), tuple),
     )
     
-    log.info(str(parent['path']))
     yield parent
 
     yield from child_files
