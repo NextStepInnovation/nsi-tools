@@ -2,8 +2,8 @@ import io
 from functools import wraps
 from pathlib import Path
 import typing as T
+import importlib.resources
 
-from pkg_resources import resource_filename
 from PIL import (
     Image,
     ImageDraw,
@@ -52,7 +52,7 @@ def delta_point(x, y):
     return delta
 
 def get_font(name):
-    return resource_filename(__name__, f'templates/fonts/{name}')
+    return importlib.resources.files(__name__) / f'templates/fonts/{name}'
 
 def tt_font(path):
     def font(*a, **kw):

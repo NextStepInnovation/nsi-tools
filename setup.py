@@ -50,7 +50,7 @@ setup(
         'jinja2',
         'jmespath',
         'lxml',
-        'markdown<3.2',
+        'markdown',
         'markdownify',
         'msgpack',
         'multipledispatch',

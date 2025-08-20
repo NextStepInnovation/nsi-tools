@@ -1,25 +1,20 @@
 import random
 from pathlib import Path
+import importlib.resources
 
-from pkg_resources import resource_filename as _resource_filename
+#from pkg_resources import resource_filename as _resource_filename
 
 from ..toolz import (
     pipe, curry, compose, memoize, concatv, groupby, take,
     filter, map, strip_comments, sort_by, vmap, get, noop,
 )
 
-resource_filename = curry(_resource_filename)(__name__)
-path = compose(
-    Path,
-    resource_filename,
-    str,
-    lambda p: Path(p),
-)
-
+def data_path(name) -> Path:
+    return importlib.resources(__name__) / name
 
 @memoize
 def user_agents():
-    return path('user-agents.txt').read_text().splitlines()
+    return data_path('user-agents.txt').read_text().splitlines()
 
 def random_user_agent():
     return pipe(
@@ -28,9 +23,9 @@ def random_user_agent():
     )
 
 @memoize
-def nmap_services(path='nmap-services'):
+def nmap_services(path: Path|str='nmap-services'):
     return pipe(
-        Path(resource_filename(path)).read_text().splitlines(),
+        data_path(path).read_text().splitlines(),
         strip_comments,
         filter(None),
         map(lambda l: l.split('\t')[:3]),

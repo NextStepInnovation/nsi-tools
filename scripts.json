@@ -1,6 +1,7 @@
 [
     ["diffips", "nsi.cli.ips:diff_ips"],
     ["intips", "nsi.cli.ips:int_ips"],
+    ["xorips", "nsi.cli.ips:xor_ips"],
     ["difflines", "nsi.cli.text:diff_lines"],
     ["intlines", "nsi.cli.text:int_lines"],
     ["sortips", "nsi.cli.ips:sort_ips"],

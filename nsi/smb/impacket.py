@@ -11,7 +11,7 @@ from datetime import datetime
 import socks
 from impacket.smbconnection import SMBConnection, SessionError
 from impacket.smb import SharedFile
-from impacket import smb
+from impacket import smb, smb3structs
 from impacket.dcerpc.v5.srvs import SHARE_INFO_1
 from impacket.nmb import NetBIOSTimeout
 
@@ -183,7 +183,7 @@ def parse_session_error(err: SessionError):
             'code': code, 'name': name, 'desc': desc,
         }
 
-def split_ntlm(hash: str) -> T.Tuple[str|None, str|None]:
+def split_ntlm(hash: str|None) -> T.Tuple[str|None, str|None]:
     if hash is None:
         return None, None
     if ':' in hash:
@@ -210,8 +210,8 @@ class LoginData(T.NamedTuple):
     user: str
     password: str
     hashes: str
-    ip: str
     socks: bool
+    ip: str
 
     def ntlm(self):
         return split_ntlm(self.hashes)
@@ -220,6 +220,17 @@ class LoginData(T.NamedTuple):
         return self.ntlm()[1]
     def lm(self):
         return self.ntlm()[0]
+    def output_key(self) -> T.Tuple[str, str, str, str, bool]:
+        return (
+            self.domain, self.user, self.password, self.hashes, self.socks,
+        )
+    def hash(self):
+        return pipe(
+            self.output_key(),
+            map(str),
+            '\t'.join,
+            md5,
+        )
 
 
 acceptable_socket_errors_re = re.compile(
@@ -403,6 +414,7 @@ def is_share_readable(client: SMBConnection, share: str|SHARE_INFO_1):
     
     try:
         get_tree_id(client, share)
+        client.listPath(share, win_list_dir('/'))
         _readable_shares[key] = True
     except SessionError as err:
         _readable_shares[key] = False
@@ -410,10 +422,11 @@ def is_share_readable(client: SMBConnection, share: str|SHARE_INFO_1):
     return _readable_shares[key]
 
 @curry
-def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData):
+def is_dir_writeable(client: SMBConnection, share: str|Path|FileData, 
+                     file: str|Path|FileData = None):
+    share, file = _get_share_file(client, share, file)
     tid = get_tree_id(client, share)
-    if is_dict(path):
-        path = path['path']
+    path = file['path']
     file_path = win_path(Path(path) / f'nsi-dir-write-test-{random_str(16)}')
     try:
         fid = client.createFile(tid, file_path)
@@ -424,15 +437,18 @@ def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData)
         return False
     
 @curry
-def is_dir_writeable(client: SMBConnection, share: str, path: str|Path|FileData):
+def is_dir_readable(client: SMBConnection, share: str, file: str|Path|FileData = None):
+    share, file = _get_share_file(client, share, file)
     tid = get_tree_id(client, share)
-    if is_dict(path):
-        path = path['path']
-    file_path = win_path(Path(path) / f'nsi-dir-write-test-{random_str(16)}')
+    path = file['path']
     try:
-        fid = client.createFile(tid, file_path)
+        fid = client.openFile(
+            tid, win_path(path),
+            smb3structs.FILE_READ_ATTRIBUTES | smb.FILE_READ_DATA,
+            smb.FILE_SHARE_READ, 
+            smb.FILE_DIRECTORY_FILE | smb3structs.FILE_SYNCHRONOUS_IO_NONALERT,
+        )
         client.closeFile(tid, fid)
-        client.deleteFile(share, file_path)
         return True
     except SessionError as serr:
         return False
@@ -506,12 +522,12 @@ def get_shares_metadata(client: SMBConnection, *,
 
 
 
-def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
-    if is_dict(path):
-        return path
+def get_file_data(client: SMBConnection, share: str, file: str|Path|FileData = None):
+    if is_dict(share):
+        return share
     try:
-        path = Path(path)
-        files = client.listPath(share, win_path(path))
+        path = Path(file)
+        files = client.listPath(share, win_list_dir(path))
     except SessionError as err:
         match err.getErrorCode():
             case 0xc000000f:
@@ -519,7 +535,7 @@ def get_file_data(client: SMBConnection, share: str, path: str|Path|FileData):
             case 0xc00000cc:
                 log.error(f'No share at {share} for {client.getRemoteHost()}')
             case other:
-                log.error(f'Error getting path {err}')
+                log.error(f'Error getting path {err} {client.getRemoteHost()} share: {share} file: {file} path: {path}')
         return None
     return file_data(share, files[0], path.parent)
 
@@ -533,8 +549,8 @@ def get_extended_meta(client: SMBConnection, share: str|Path|FileData,
             'type': FileType({
                 'content': 'directory', 'ext': None, 
             }),
-            'write': is_dir_writeable(client, share, file['path']),
-            'read': True,
+            'write': is_dir_writeable(client, file),
+            'read': is_dir_readable(client, file),
         })
 
     tid = get_tree_id(client, share)
@@ -582,18 +598,32 @@ def get_extended_meta(client: SMBConnection, share: str|Path|FileData,
         'read': can_read_file,
     })
 
+FileFilter = T.Callable[[FileData], bool]
+true: FileFilter = lambda *a: True
 
 @curry
 def dir_tree(client: SMBConnection, share: str, path: Path=None,
-             parent: FileData|None = None) -> T.Iterator[FileData]:
+             parent: FileData|None = None, *,
+             file_filter: FileFilter = true,
+             dir_filter: FileFilter = true) -> T.Iterator[FileData]:
     path = Path(path or '/')
     children: T.Sequence[FileData] = pipe(
         list_dir(client, share, path), 
         tuple,
     )
 
-    child_files = pipe(children, filter(complement(get('is_dir'))), tuple)
-    child_dirs = pipe(children, filter(get('is_dir')), tuple)
+    child_files = pipe(
+        children, 
+        filter(get('is_file')), 
+        filter(file_filter),
+        tuple,
+    )
+    child_dirs = pipe(
+        children, 
+        filter(get('is_dir')), 
+        filter(dir_filter),
+        tuple,
+    )
 
     parent = dir_data(
         share,
@@ -645,14 +675,44 @@ def format_share(share: ShareMetadata):
         '\t'.join,
     )
 
-def output_key(data: LoginData) -> T.Tuple[str, str, str, str, bool]:
-    return (
-        data.domain, data.user, data.password, data.hashes, data.socks,
-    )
+class Host(T.TypedDict):
+    remote_host: str
+    remote_name: str
+
+    dns_domain_name: str
+    dns_host_name: str
+    server_domain: str
+    server_name: str
+
+    os: str
+    os_build: int
+    os_major: int
+    os_minor: int
+
+    signing_required: bool
+    ntlmv2: bool
+
+    @classmethod
+    def from_client(cls, client: SMBConnection):
+        return cls({
+            'remote_host': client.getRemoteHost(),
+            'remote_name': client.getRemoteName(),
+            'dns_domain_name': client.getServerDNSDomainName(),
+            'dns_host_name': client.getServerDNSHostName(),
+            'server_domain': client.getServerDomain(),
+            'server_name': client.getServerName(),
+            'os': client.getServerOS(),
+            'os_build': client.getServerOSBuild(),
+            'os_major': client.getServerOSMajor(),
+            'os_minor': client.getServerOSMinor(),
+            'signing_required': client.isSigningRequired(),
+            'ntlmv2': client.doesSupportNTLMv2(),
+        })
+
 
 @curry
 def enum_shares_and_output(data: LoginData, output_dirs: dict, force: bool = False):
-    output_dir = output_dirs[output_key(data)]
+    output_dir = output_dirs[data.output_key()]
     output_stem = f'{data.ip}'
     json_path = output_dir / f"{output_stem}.json"
     output_path = output_dir / f"{output_stem}.txt"
@@ -675,7 +735,11 @@ def enum_shares_and_output(data: LoginData, output_dirs: dict, force: bool = Fal
         return
 
     try:
-        metadata = tuple(get_shares_metadata(client))
+        metadata = {
+            'login': data.hash(),
+            'host': Host.from_client(client),
+            'shares': tuple(get_shares_metadata(client)),
+        }
     except SessionError as error:
         log.error(
             f'Error getting shares with {data}: {parse_session_error(error)}'
@@ -703,7 +767,7 @@ def enum_shares_and_output(data: LoginData, output_dirs: dict, force: bool = Fal
     )
     
     return pipe(
-        metadata,
+        metadata['shares'],
         map(format_share),
         '\n'.join,
         output_path.write_text,
@@ -732,7 +796,7 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
             map(groupdict(ntlmrelayx_socks_re)),
             map(get(['domain', 'user', 'ip'], default='')),
             filter(all),
-            vmap(lambda d, u, i: LoginData(d, u, None, None, i, True)),
+            vmap(lambda d, u, i: LoginData(d, u, None, None, True, i)),
             tuple,
         )
         if not login_data:
@@ -751,7 +815,7 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
 
         login_data = pipe(
             ip_list,
-            map(lambda ip: LoginData(domain, user, password, hashes, ip, False)),
+            map(lambda ip: LoginData(domain, user, password, hashes, False, ip)),
             tuple,
         )
         if not login_data:
@@ -775,7 +839,7 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
 
     output_dirs = pipe(
         login_data,
-        groupby(output_key),
+        groupby(lambda d: d.output_key()),
         # only socks data should have multiple login information
         valmap(lambda logins: output_dir(logins[0], output_dir_path=output_dir_path)),
     )
@@ -834,16 +898,29 @@ def enumerate_smb_shares(ips_or_socks: T.Sequence[str] | str | Path,
             ),
             pipe(
                 json_paths, 
-                mapcat(json_slurp), 
+                map(json_slurp), 
                 tuple,
+                lambda shares: {
+                    'login': pipe(
+                        login_data,
+                        groupby(lambda d: d.hash()),
+                        valmap(first),
+                    ),
+                    'shares': shares,
+                },
                 json_dumps(indent=2),
             ),
         ))),
         values,
         vmap(lambda dir_path, txt_content, json_content: (
-            as_txt(dir_path).write_text(txt_content),
-            as_json(dir_path).write_text(json_content),
+            as_txt(dir_path), as_json(dir_path), txt_content, json_content
         )),
+        vmap(lambda txt_path, json_path, txt_content, json_content: (
+            txt_path, json_path,
+            txt_path.write_text(txt_content),
+            json_path.write_text(json_content),
+        )[:2]),
         tuple,
     )
+
 

@@ -42,6 +42,31 @@ def diff_ips(patha, pathb, loglevel):
         print,
     )
 
+@click.command()
+@click.argument(
+    'patha',
+    type=click.Path(exists=True),
+)
+@click.argument(
+    'pathb',
+    type=click.Path(exists=True),
+)
+@loglevel
+def xor_ips(patha, pathb, loglevel):
+    '''Given PATHA and PATHB of IPs, print XOR (A ^ B)
+
+    '''
+    setup_logging(loglevel)
+    ips_a = set(_.get_ips_from_file(patha))
+    ips_b = set(_.get_ips_from_file(pathb))
+
+    _.pipe(
+        ips_a ^ ips_b,
+        _.sortips,
+        '\n'.join,
+        print,
+    )
+
 @click.command(
     help=('Given PATHA and PATHB of IPs, print intersection (A & B)'),
 )
