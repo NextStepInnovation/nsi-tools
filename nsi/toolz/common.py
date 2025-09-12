@@ -16,6 +16,7 @@ import importlib
 from click import Argument
 import multipledispatch
 import io
+import itertools
 from typing import *
 
 from pymaybe import maybe as _maybe, Nothing
@@ -62,7 +63,7 @@ __all__ = [
     'mapcat', 'memoize', 'merge', 'merge_sorted', 'merge_with',
     'nth', 'operator', 'partial', 'partition', 'partition_all',
     'partitionby', 'peek', 'peekn', 'pipe', 'pluck',
-    'reduce', 'reduceby', 'remove', 'second',
+    'reduce', 'reduceby', 'reject', 'remove', 'second',
     'sliding_window', 'sorted', 'tail', 'take', 'take_nth',
     'thread_first', 'thread_last', 'topk', 'unique', 'update_in',
     'valfilter', 'valmap',
@@ -926,6 +927,8 @@ def map_t(func, values):
         map(func),
         tuple,
     )
+
+reject = functools.wraps(itertools.filterfalse)(curry(itertools.filterfalse))
 
 @curry
 def filter_t(func, values):
