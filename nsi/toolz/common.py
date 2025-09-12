@@ -469,11 +469,12 @@ def as_dict(func):
     '''
     @functools.wraps(func)
     def wrapper(*a, **kw):
-        return pipe(
+        dicts = pipe(
             func(*a, **kw),
             filter(None),
-            merge,
+            tuple,
         )
+        return merge(dicts)
     return wrapper
 
 # ---------------------------
