@@ -119,15 +119,19 @@ def bloodhound_data_from_paths(paths: T.List[Path]):
         bloodhound_data,
     )
 
-@memoize
+_parsed_dirs = {}
 def parse_directory(path: Union[str, Path]):
     '''Parse directory with Bloodhound JSON files
 
     '''
-    return pipe(
-        Path(path).expanduser().glob('*.json'),
-        bloodhound_data_from_paths,
-    )
+    dir_path = Path(path).expanduser().resolve()
+    if dir_path not in _parsed_dirs:
+        _parsed_dirs[dir_path] = pipe(
+            dir_path.glob('*.json'),
+            bloodhound_data_from_paths,
+        )
+
+    return _parsed_dirs[dir_path]
     
 def get_names(objects):
     return pipe(
@@ -143,14 +147,15 @@ get_computer_names = compose_left(
     get_names,
 )
 
-get_user_dict = compose_left(
-    parse_directory,
-    get('users'),
-    mget('Properties'),
-    filter(lambda u: 'samaccountname' in u),
-    groupby(lambda u: u['samaccountname'].lower()),
-    valmap(first),
-)
+def get_user_dict(path):
+    return pipe(
+        parse_directory(path),
+        get('users'),
+        mget('Properties'),
+        filter(lambda u: 'samaccountname' in u),
+        groupby(lambda u: u['samaccountname'].lower()),
+        valmap(first),
+    )
 
 def get_domain_admins(path):
     return pipe(
