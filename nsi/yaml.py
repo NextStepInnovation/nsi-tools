@@ -1,4 +1,5 @@
 import logging
+import io
 from pathlib import Path
 from functools import wraps
 import typing as T
@@ -15,16 +16,21 @@ log = logging.getLogger('yaml')
 log.addHandler(logging.NullHandler())
 
 @wraps(ruamel.yaml.dump)
-def dump(*a, **kw) -> str:
-    kw['Dumper'] = ruamel.yaml.RoundTripDumper
-    kw['default_flow_style'] = False
-    kw['width'] = 2**31
-    return ruamel.yaml.dump(*a, **kw)
+def dump(obj, *a, **kw) -> str:
+    # kw['Dumper'] = ruamel.yaml.RoundTripDumper
+    # kw['default_flow_style'] = False
+    # kw['width'] = 2**31
+    # return ruamel.yaml.dump(*a, **kw)
+    yaml = ruamel.yaml.YAML(typ='rt')
+    buf = io.StringIO()
+    yaml.dump(obj, buf, *a, **kw)
+    return buf.getvalue()
 
-@wraps(ruamel.yaml.load)
+@wraps(ruamel.yaml.YAML.load)
 def load(*a, **kw) -> T.Any:
-    kw['Loader'] = ruamel.yaml.RoundTripLoader
-    return ruamel.yaml.load(*a, **kw)
+    #kw['Loader'] = ruamel.yaml.RoundTripLoader
+    yaml = ruamel.yaml.YAML(typ='rt')
+    return yaml.load(*a, **kw)
 
 @_.ensure_paths
 @_.curry

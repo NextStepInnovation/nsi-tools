@@ -10,7 +10,7 @@ from ..toolz import (
 )
 
 def data_path(name) -> Path:
-    return importlib.resources(__name__) / name
+    return importlib.resources.files(__name__) / name
 
 @memoize
 def user_agents():
