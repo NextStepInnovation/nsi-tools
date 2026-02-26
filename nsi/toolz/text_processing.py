@@ -17,7 +17,7 @@ from .. import logging
 __all__ = [
     # text_processing
     'clipboard_copy', 'clipboard_paste', 'copy', 'paste',
-    'difflines', 'escape_row', 'intlines',
+    'difflines', 'escape_row', 'intlines', 'column_to_excel',
     'lines_without_comments', 'output_rows_to_clipboard', 'remove_comments', 
     'strip_comments', 'strip_comments_from_line', 'pformat', 'pfint', 'noansi', 
     'clip_text', 'clip_lines', 'strip_comments_from_lines', 'xlsx_to_clipboard', 
@@ -82,14 +82,26 @@ def xlsx_to_clipboard(content: str):
         clipboard_copy,
     )
 
+def escape_quotes(v):
+    return v.replace('"', '""')
+
 def escape_row(row: Iterable[str]):
-    '''Prepare individual row for pasting as an Excel column
+    '''Prepare individual row for pasting as an Excel row
     '''
     return pipe(
         row,
-        map(lambda v: v.replace('"', '""')),
+        map(escape_quotes),
         map(lambda v: f'"{v}"'),
         '\t'.join,
+    )
+
+def column_to_excel(column: T.Sequence[T.Any]):
+    return pipe(
+        column,
+        map(str),
+        map(escape_quotes),
+        map(lambda v: f'"{v}"'),
+        '\n'.join,
     )
 
 def output_rows_to_clipboard(rows: Iterable[Iterable]):
