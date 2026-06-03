@@ -14,9 +14,12 @@ import charset_normalizer
 from toolz.functoolz import compose_left, compose
 
 from .common import (
-    pipe, call, concatv, vmapcat, curry, map, filter, vfilter,
+    pipe, call, concatv, vmapcat, curry, map, filter, vfilter, do,
     new_log, splitlines, merge, memoize, deref, is_seq, vmap, vcall,
 )
+
+TV = T.TypeVar('TV')
+PS = T.ParamSpec('PS')
 
 log = new_log(__name__)
 

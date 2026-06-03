@@ -5,7 +5,8 @@ import re
 import typing as T
 
 from sqlalchemy import (
-    ForeignKey, create_engine, Table, Column, String, Integer, Float, true,
+    ForeignKey, create_engine, Table, Column, String, Integer, Float,
+    Exists, BooleanClauseList,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (
@@ -17,6 +18,7 @@ from ...toolz import (
     pipe, vmap, merge, ensure_paths, get, filter, map, vfilter,
     take, mapcat, do, newer, first, maybe_first, groupby, deref, valmap,
     igrep, is_str, is_seq, curry, complement, strip, get_ips_from_lines,
+    reduce
 )
 
 from . import parser
@@ -28,10 +30,10 @@ from .types import (
 __all__ = [
     'get_engine', 'get_session', 
     'Fingerprint', 'ServiceFingerprint', 'NodeFingerprint', 
-    'Software', 
+    'Software', 'Reference',
     'Test', 'ServiceTest', 'NodeTest', 
     'Configuration', 'Service', 'Endpoint', 'NodeName', 'Site', 'Node', 'Exploit',
-    'Malware', 'Tag', 'Finding', 'Scan', 'NexposeReport',
+    'Malware', 'Tag', 'Finding', 'Scan', 'NexposeReport', 'Exists', 'Session',
 ]
 
 log = logging.new_log(__name__)
@@ -61,6 +63,13 @@ def get_session(xml_path: Path, session_kw=None, engine_kw=None) -> Session:
     engine = get_engine(xml_path, **(engine_kw or {}))
     return Session(engine, **(session_kw or {}))
 
+def join_regexes(regexes: RegexList):
+    return pipe(
+        regexes,
+        map(re.escape),
+        '|'.join,
+        lambda s: f'({s})'
+    )
 
 Base = declarative_base()
 
@@ -266,26 +275,45 @@ class Test(Base, NexposeData):
 
     @classmethod
     def node_finding_filter(cls, addresses: IpList, 
-                            include_tags: TagList, exclude_tags: TagList, 
-                            include_regex: RegexList = None,
-                            exclude_regex: RegexList = None):
-        node_filter = cls.node_filter(addresses)
-        finding_filter = cls.finding_filter(
+                            include_tags: TagList, 
+                            exclude_tags: TagList, 
+                            include_regex: RegexList,
+                            exclude_regex: RegexList) -> Exists | BooleanClauseList:
+        return cls.node_filter(addresses) & cls.finding_filter(
             include_tags, exclude_tags, include_regex, exclude_regex,
         )
-        if finding_filter is not None:
-            return node_filter & finding_filter
-        return node_filter
+        # node_filter = 
+        # finding_filter = 
+        # if finding_filter is not None:
+        #     return node_filter & finding_filter
+        # return node_filter
 
     @classmethod
     def finding_filter(cls, include_tags: TagList, exclude_tags: TagList,
-                       include_regex: RegexList, exclude_regex: RegexList):
-        finding_filter = Finding.finding_filter(
+                       include_regex: RegexList, exclude_regex: RegexList) -> Exists:
+        return cls.finding.has(Finding.finding_filter(
             include_tags, exclude_tags,  include_regex, exclude_regex,
-        )
+        ))
+        # finding_filter = 
         if finding_filter is not None:
             return cls.finding.has(finding_filter)
-        
+        return True
+
+    @classmethod
+    def tag_filter(cls, tags: TagList) -> Exists:
+        if not tags:
+            return Exists(True)
+        return cls.finding.has(Finding.tag_filter(tags))
+
+    @classmethod
+    def regex_filter(cls, regexes: RegexList) -> Exists:
+        if not regexes:
+            return Exists(True)
+        return cls.finding.has(Finding.regex_filter(regexes))
+
+
+
+
 
 
 
@@ -299,7 +327,7 @@ class ServiceTest(Test):
     }
 
     @classmethod
-    def node_filter(cls, addresses: IpList):
+    def node_filter(cls, addresses: IpList) -> Exists:
         return pipe(
             addresses,
             address_seq,
@@ -323,7 +351,7 @@ class NodeTest(Test):
     }
 
     @classmethod
-    def node_filter(cls, addresses: IpList):
+    def node_filter(cls, addresses: IpList) -> Exists:
         return pipe(
             addresses,
             address_seq,
@@ -1019,60 +1047,93 @@ class Finding(Base, NexposeData):
         )
 
     @classmethod
-    def finding_filter(cls, include_tags: TagList, exclude_tags: TagList,
-                       include_regex: RegexList = None, 
-                       exclude_regex: RegexList = None):
-        regex_filter = cls.regex_filter(include_regex, exclude_regex)
-        match (include_tags, exclude_tags):
-            case (None, None):
-                return regex_filter
-            case (None, exclude):
-                tag_filter = ~Finding.tags.any(Tag.name.in_(exclude_tags))
-                if regex_filter is not None:
-                    return tag_filter & regex_filter
-                return tag_filter
-            case (include, None):
-                return regex_filter
-            case (include, exclude):
-                filter = (
-                    Finding.tags.any(Tag.name.in_(include_tags)) | 
-                    ~Finding.tags.any(Tag.name.in_(exclude_tags))
-                )
-                if regex_filter is not None:
-                    return filter & regex_filter
-                return filter
-            
-    @classmethod
-    def regex_filter(cls, include_regex: RegexList, exclude_regex: RegexList):
-        def join_regexes(regexes: RegexList):
-            return pipe(
-                regexes,
-                map(re.escape),
-                '|'.join,
-                lambda s: f'({s})'
-            )
+    def finding_filter(cls, include_tags: TagList, 
+                       exclude_tags: TagList,
+                       include_regex: RegexList, 
+                       exclude_regex: RegexList):
+        et_filter = cls.tag_filter(exclude_tags)
+
+        er_filter = cls.regex_filter(exclude_regex)
+
+        include = cls.include_filter(include_tags, include_regex)
         
-        match (include_regex, exclude_regex):
-            case (None | [], None | []):
-                return None
-            case (None | [], exclude):
-                exclude = join_regexes(exclude)
-                return ~(Finding.title.regexp_match(exclude) |
-                         Finding.description.regexp_match(exclude))
-            case (include, None | []):
-                return None
+        match (et_filter, er_filter):
+            case (None, None):
+                exclude = None
+            case (None, er_filter):
+                exclude = er_filter
+            case (et_filter, None):
+                exclude = et_filter
+            case (et_filter, er_filter):
+                exclude = et_filter | er_filter
+
+        match (include, exclude):
+            case (None, None):
+                return Exists(True)
+            case (include, None):
+                return include
+            case (None, exclude):
+                return ~exclude
             case (include, exclude):
-                include, exclude = pipe(
-                    (include, exclude),
-                    map(join_regexes)
-                )
-                filter = (
-                    (Finding.title.regexp_match(include) |
-                     Finding.description.regexp_match(include)) |
-                    ~(Finding.title.regexp_match(exclude) |
-                      Finding.description.regexp_match(exclude))
-                )
-                return filter
+                return include | ~exclude
+
+    @classmethod
+    def include_filter(cls, include_tags: TagList, include_regex: RegexList):
+        it_filter = cls.tag_filter(include_tags)
+        ir_filter = cls.regex_filter(include_regex)
+        match (it_filter, ir_filter):
+            case (None, None):
+                return None
+            case (None, ir_filter):
+                return ir_filter
+            case (it_filter, None):
+                return it_filter
+            case (it_filter, ir_filter):
+                return it_filter | ir_filter
+
+    @classmethod
+    def tag_filter(cls, tags: TagList) -> Exists:
+        return Finding.tags.any(Tag.name.in_(tags)) if tags else None
+
+    @classmethod
+    def regex_filter(cls, regexes: RegexList) -> Exists:
+        if not regexes:
+            return None
+        regex = join_regexes(regexes)
+        return (
+            Finding.title.regexp_match(regex) |
+            Finding.description.regexp_match(regex)
+        )
+    
+
+    # @classmethod
+    # def regex_filter(cls, include_regex: RegexList, exclude_regex: RegexList):
+        
+    #     match (include_regex, exclude_regex):
+    #         case (None | [], None | []):
+    #             return None
+    #         case (None | [], exclude):
+    #             exclude = join_regexes(exclude)
+    #             return ~(Finding.title.regexp_match(exclude) |
+    #                      Finding.description.regexp_match(exclude))
+    #         case (include, None | []):
+    #             include = join_regexes(include)
+    #             return (
+    #                 Finding.title.regexp_match(include) |
+    #                 Finding.description.regexp_match(include)
+    #             )
+    #         case (include, exclude):
+    #             include, exclude = pipe(
+    #                 (include, exclude),
+    #                 map(join_regexes)
+    #             )
+    #             filter = (
+    #                 (Finding.title.regexp_match(include) |
+    #                  Finding.description.regexp_match(include)) &
+    #                 ~(Finding.title.regexp_match(exclude) |
+    #                   Finding.description.regexp_match(exclude))
+    #             )
+    #             return filter
 
 
 

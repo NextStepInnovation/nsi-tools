@@ -2,10 +2,14 @@ import typing as T
 import struct
 import socket
 from pathlib import Path
+from datetime import datetime
 from collections import namedtuple
+from dataclasses import dataclass, asdict, fields
 
 import ifcfg
+import dateutil.tz
 from scapy.layers.l2 import Ether
+from scapy.packet import Raw
 from scapy.layers.inet import IP, UDP
 from scapy.layers.inet6 import IPv6
 from scapy.layers.dns import (
@@ -13,11 +17,13 @@ from scapy.layers.dns import (
 )
 from scapy.layers.netbios import NBNSHeader, NBNSQueryRequest, NBNSQueryResponse
 from scapy.layers.llmnr import LLMNRQuery, LLMNRResponse
+import dpkt
 
 from .. import logging
 from ..toolz import (
     pipe, vmap, map, filter, memoize, curry, to_bytes, is_str, merge,
     ensure_paths, dissoc, valfilter, to_str, split, do, is_seq, is_dict,
+    to_dt,
 )
 from ..types import Ip, IpList
 
@@ -95,39 +101,47 @@ def lstrings(data: bytes, encoding: str = 'utf-8') -> T.Iterable[str]:
         yield datum.decode(encoding=encoding)
         data = data[size:]
 
-class DictWithNulls(T.TypedDict):
+def field_names(cls):
+    for field in fields(cls):
+        yield field.name
+
+@dataclass
+class MnrData:
     @classmethod
-    def from_dict(cls, record: dict):
-        type_key = lambda d: d.get('type') or d.get('qtype')
-        
+    def from_json(cls, record: dict):
         return pipe(
-            cls.__annotations__.keys(),
+            field_names(cls),
             map(lambda f: (f, record.get(f))),
             dict,
-            cls,
+            lambda d: cls(**d),
         )
-    
-def prepare_data(data: DictWithNulls | T.Any):
-    if is_seq(data):
-        return pipe([
-            prepare_data(v) for v in data
-        ], filter(lambda v: v is not None), tuple)
-    elif is_dict(data):
-        return pipe({
-            k: prepare_data(v) for k, v in data.items()
-        }, valfilter(lambda v: v is not None))
-    return data
 
+    def to_json(self):
+        return asdict(self)
+        # if is_seq(data):
+        #     return pipe([
+        #         v.prepare_data(v) for v in data
+        #     ], filter(lambda v: v is not None), tuple)
+        # elif is_dict(data):
+        #     return pipe({
+        #         k: v.prepare_data(v) for k, v in data.items()
+        #     }, valfilter(lambda v: v is not None))
+        # elif isinstance(data, bytes):
+        #     return data.decode('latin-1')
+        # return data
 
-class EtherFields(DictWithNulls):
+@dataclass
+class EtherFields(MnrData):
     src: str
     dst: str
     type: int
 
-    def from_frame(frame: Ether):
-        return dict(frame.fields)
+    @classmethod
+    def from_frame(cls, frame: Ether):
+        return cls(**frame.fields)
 
-class IPv4Fields(DictWithNulls):
+@dataclass
+class IPv4Fields(MnrData):
     version: int
     ihl: int
     tos: int
@@ -140,14 +154,16 @@ class IPv4Fields(DictWithNulls):
     chksum: int
     src: str
     dst: str
+
     @classmethod
     def from_frame(cls, frame: Ether):
         fields = dissoc(frame[IP].fields, 'options')
-        return cls(merge(fields, {
+        return cls(**merge(fields, {
             'flags': fields['flags'].flagrepr(),
         }))
         
-class IPv6Fields(DictWithNulls):
+@dataclass
+class IPv6Fields(MnrData):
     version: int
     tc: int
     fl: int
@@ -156,23 +172,11 @@ class IPv6Fields(DictWithNulls):
     hlim: int
     src: str
     dst: str
+
     @classmethod
     def from_frame(cls, frame: Ether):
-        return dict(frame[IPv6].fields)
-        fields = dissoc(frame[IPv6].fields, 'options')
-        return cls(merge(fields, {
-            'flags': fields['flags'].flagrepr(),
-        }))
+        return cls(**frame[IPv6].fields)
     
-def get_ip_fields(frame: Ether):
-    if IP in frame:
-        return IPv4Fields.from_frame(frame)
-    if IPv6 in frame:
-        return IPv6Fields.from_frame(frame)
-    log.error(
-        f'This frame is neither IPv4 nor IPv6'
-    )
-
 rrtype_pairs = [
     (1, 'A'), (2, 'NS'), (3, 'MD'), (4, 'MF'), (5, 'CNAME'), (6, 'SOA'), (7, 'MB'),
     (8, 'MG'), (9, 'MR'), (10, 'NULL'), (11, 'WKS'), (12, 'PTR'), (13, 'HINFO'),
@@ -196,14 +200,15 @@ MDNS_RECORDS = (DNSQR,  DNSRR, DNSRRSRV, DNSRRNSEC)
 NBNS_RECORDS = (NBNSQueryRequest, NBNSQueryResponse)
 LLMNR_RECORDS = (LLMNRQuery, LLMNRResponse)
 
-class MulticastRecord(DictWithNulls):
+@dataclass
+class MnrRecord(MnrData):
     name: str
     rrname: str
     target: str
     nextname: str
     qname: str
-    rdata: T.Sequence[bytes]
-    rdata_dict: T.Dict[str, str]
+    rdata: T.Sequence[bytes] | bytes | str
+    rdata_dict: T.Dict[str, str] | None
     type: int
     type_str: str
     cacheflush: int
@@ -230,41 +235,57 @@ class MulticastRecord(DictWithNulls):
                 'qclass': fields['QUESTION_CLASS'],
                 'qtype': 1,
             })
+        for k, v in fields.items():
+            if isinstance(v, bytes):
+                fields[k] = v.decode()
         if 'rdata' in fields:
-            rdata_str = pipe(
-                fields['rdata'],
-                map(str),
-                tuple,
-            )
-            rdata_dict_str = pipe(rdata_str, filter(lambda s: '=' in s), tuple)
-            if rdata_dict_str:
-                fields = merge(fields, {
-                    'rdata_dict': pipe(
-                        rdata_dict_str,
-                        map(split('=', maxsplit=1)),
-                        # tuple, do(log.error),
-                        dict,
-                    ),
-                })
+            if is_seq(fields['rdata']):
+                rdata_strings = pipe(
+                    fields['rdata'],
+                    map(lambda b: b.decode() if isinstance(b, bytes) else b),
+                    list,
+                )
+                fields['rdata'] = rdata_strings
+                rdata_dict_str = pipe(
+                    rdata_strings, 
+                    filter(lambda s: '=' in s), 
+                    tuple,
+                )
+                if rdata_dict_str:
+                    fields = merge(fields, {
+                        'rdata_dict': pipe(
+                            rdata_dict_str,
+                            map(split('=', maxsplit=1)),
+                            dict,
+                        ),
+                    })
+            else:
+                rd = fields['rdata']
+                fields['rdata'] = rd.decode() if isinstance(rd, bytes) else rd
         return fields
 
     @classmethod
-    def from_record(cls, record: (DNSQR | DNSRR | DNSRRSRV | DNSRRNSEC | 
-                                  NBNSQueryRequest | NBNSQueryResponse | 
-                                  LLMNRQuery | LLMNRResponse)):
+    def from_record(cls: 'MnrRecord', 
+                    record: (DNSQR | DNSRR | DNSRRSRV | DNSRRNSEC | 
+                             NBNSQueryRequest | NBNSQueryResponse | 
+                             LLMNRQuery | LLMNRResponse)):
         fields = cls.record_fields(record)
         type_key = lambda d: (d.get('type') or d.get('qtype'))
-        name_key = lambda d: (d.get('rrname') or d.get('qname'))
-        return pipe(
-            cls.__annotations__.keys(),
+        def get_name(d):
+            name = (d.get('rrname') or d.get('qname'))
+            if name is not None:
+                if isinstance(name, bytes):
+                    return name.decode()
+            return name
+        return cls(**pipe(
+            field_names(cls),
             map(lambda f: (f, fields.get(f))),
             dict,
             lambda d: merge(d, {
-                'name': name_key(d),
+                'name': get_name(d),
                 'type_str': rrtype_to_str[type_key(d)] if type_key(d) is not None else None,
-            } if name_key(d) is not None else {}),
-            cls,
-        )
+            } if get_name(d) is not None else {}),
+        ))
 
 def get_mnr_type(frame: Ether):
     match frame[UDP].dport:
@@ -280,10 +301,62 @@ def get_mnr_type(frame: Ether):
     log.error(
         'Spurious non-MNR frame'
     )
-#def nbns_rec_to_dns(request)
-    
-class DNSFields(T.TypedDict):
-    mnr_type: str
+
+nbns_suffixes = {
+    0x00: "Workstation Service / Redirector (Workstation Name)",
+    0x01: "Messenger Service (Workstation Name) - Usually for Send/Receive messages",
+    0x03: "Messenger Service (Username)",
+    0x06: "RAS Server Service",
+    0x1B: "Domain Master Browser / PDC",
+    0x1C: "Domain Controllers (Domain Name)",
+    0x1D: "Master Browser (Domain Name)",
+    0x1E: "Browser Service Election / Normal Group",
+    0x20: "File Server Service (Workstation Name)",
+    0x21: "RAS Client Service",
+    0x22: "Microsoft Exchange Directory Service",
+    0x23: "Microsoft Exchange Store Service",
+    0x24: "Microsoft Exchange MTA Service",
+    0x2B: "Microsoft Exchange IMC Service",
+    0x2F: "Microsoft Exchange Message Submission",
+    0x30: "Modem Sharing Service",
+    0x31: "Modem Sharing Client",
+    0x32: "Microsoft Exchange Referral",
+    0x33: "Microsoft Exchange NNTP Service",
+    0x43: "SMS Clients (Site Server)",
+    0x4C: "DEC Pathworks TCPIP Services for Windows NT",
+    0x52: "DEC Pathworks TCPIP Services for Windows NT",
+    0x6A: "Microsoft Exchange",
+    0xBE: "Network Monitor Agent",
+    0xBF: "Network Monitor Application",
+    0xA0: "NetWare Link (for MS Windows)",
+    0xB8: "Remote Access Service (RAS) - Client",
+    0xB9: "Remote Access Service (RAS) - Server",
+    0xBA: "Remote Access Service (RAS) - Admin",
+    0xBB: "Remote Access Service (RAS) - Remote",
+    0xBD: "DNS Host (for MS Windows)",
+    0xC0: "Internet Information Services (IIS) - Web Server",
+    0xD4: "SQL Server (Database Engine)",
+    0xE0: "SQL Server (Database Engine)",
+    0xF0: "Remote Access Service (RAS) - Multi",
+    0xFD: "Network Client (MS-DOS) for MS Windows",
+    0xFE: "MS Mail Connector",
+    0xFF: "MS-DOS Network Client"
+}
+
+def decode_netbios_name(name: str|bytes) -> str:
+    """Return the NetBIOS first-level decoded nbname."""
+    name = to_bytes(name)
+    decoded = bytes(
+        [((name[i] - 0x41) << 4) |
+         ((name[i+1] - 0x41) & 0xf) for i in range(0, 32, 2)]
+    )
+    service = nbns_suffixes[decoded[-1]]
+
+    return f'{service} ({hex(decoded[-1])})', decoded[:-1]
+
+@dataclass
+class MnrFields(MnrData):
+    type: str
     id: int
     qr: int
     opcode: int
@@ -300,70 +373,129 @@ class DNSFields(T.TypedDict):
     ancount: int
     nscount: int
     arcount: int
-    questions: T.Sequence[MulticastRecord]
-    answers: T.Sequence[MulticastRecord]
-    nameserver: T.Sequence[MulticastRecord]
-    additional: T.Sequence[MulticastRecord]
+    questions: T.Sequence[MnrRecord]
+    answers: T.Sequence[MnrRecord]
+    nameserver: T.Sequence[MnrRecord]
+    additional: T.Sequence[MnrRecord]
 
     @classmethod
-    def dns_fields(cls, frame: Ether):
-        if DNS in frame:
-            return frame[DNS].fields
-        if LLMNRQuery in frame:
-            return frame[LLMNRQuery].fields
-        if LLMNRResponse in frame:
-            return frame[LLMNRResponse].fields
-        if NBNSHeader in frame:
-            nbns = frame[NBNSHeader]
-            fields = nbns.fields
-            #log.error(frame[NBNSQueryRequest])
-            return merge(fields, {
-                'qd': [frame[NBNSQueryRequest]],
-            })
-        log.error(
-            f'Not an MNR packet.'
-
-        )
+    def from_json(cls: 'MnrFields', json_fields: dict):
+        return cls(**pipe(
+            field_names(cls), 
+            map(lambda f: (f, json_fields.get(f))),
+            dict,
+            lambda F: merge(F, pipe(
+                ['questions', 'answers', 'nameserver', 'additional'],
+                map(lambda k: (k, [
+                    MnrRecord.from_json(r) for r in F.get(k, [])
+                ])),
+                dict,
+            )),
+        ))
 
     @classmethod
     def from_frame(cls, frame: Ether):
-        fields = cls.dns_fields(frame)
+        if NBNSHeader in frame:
+            nbns: NBNSHeader = frame[NBNSHeader]
+            fields = nbns.fields
+            #log.error(frame[NBNSQueryRequest])
+            if NBNSQueryRequest in nbns:
+                fields = merge(fields, {
+                    'qd': [nbns[NBNSQueryRequest]],
+                })
+            if NBNSQueryResponse in nbns:
+                fields = merge(fields, {
+                    'an': [nbns[NBNSQueryResponse]],
+                })
+            if Raw in nbns:
+                ns = dpkt.netbios.NS(nbns.original)
+        else:
+            if DNS in frame:
+                fields = frame[DNS].fields
+            if LLMNRQuery in frame:
+                fields = frame[LLMNRQuery].fields
+            if LLMNRResponse in frame:
+                fields = frame[LLMNRResponse].fields
+
         if fields is None:
             log.error(
                 'Cannot create object'
             )
             return
-        return pipe(
-            cls.__annotations__.keys(),
+        return cls(**pipe(
+            field_names(cls),
             map(lambda f: (f, fields.get(f))),
             dict,
             lambda d: merge(d, {
-                'mnr_type': get_mnr_type(frame),
-                'questions': [MulticastRecord.from_record(r) for r in fields.get('qd', [])],
-                'answers': [MulticastRecord.from_record(r) for r in fields.get('an', [])],
-                'nameserver': [MulticastRecord.from_record(r) for r in fields.get('ns', [])],
-                'additional': [MulticastRecord.from_record(r) for r in fields.get('ar', [])],
+                'type': get_mnr_type(frame),
+                'questions': [MnrRecord.from_record(r) for r in fields.get('qd', [])],
+                'answers': [MnrRecord.from_record(r) for r in fields.get('an', [])],
+                'nameserver': [MnrRecord.from_record(r) for r in fields.get('ns', [])],
+                'additional': [MnrRecord.from_record(r) for r in fields.get('ar', [])],
             }),
-            cls,
-        )
+        ))
 
-class Message(T.TypedDict):
+def get_ip_fields(frame: Ether):
+    if IP in frame:
+        return IPv4Fields.from_frame(frame)
+    if IPv6 in frame:
+        return IPv6Fields.from_frame(frame)
+    log.error(
+        f'This frame is neither IPv4 nor IPv6'
+   )
+
+@dataclass
+class Message(MnrData):
+    ts: str
+    dt: datetime
     ether: EtherFields
     ip: IPv4Fields | IPv6Fields
-    dns: DNSFields
+    mnr: MnrFields
+
+    def to_json(self):
+        return {
+            'ts': self.ts,
+            'ether': self.ether.to_json(),
+            'ip': self.ip.to_json(),
+            'mnr': self.mnr.to_json(),
+        }
 
     @classmethod
-    def from_frame(cls, frame: Ether):
+    def from_json(cls, message: dict):
+        ether = message.get('ether', {})
+        ip = message.get('ip', {})
+        mnr = message.get('mnr', {})
+        ts = message.get('ts')
         return pipe(
-            {
-                'ether': EtherFields.from_frame(frame),
-                'ip': get_ip_fields(frame),
-                'dns': DNSFields.from_frame(frame),
-            },
-            cls,
+            field_names(cls),
+            map(lambda f: (f, message.get(f))),
+            dict,
+            lambda F: merge(F, {
+                'ts': ts,
+                'dt': to_dt(ts),
+                'ether': EtherFields.from_json(ether),
+                'ip': (
+                    IPv4Fields.from_json(ip) if ip.get('version', 4) == 4
+                    else IPv6Fields.from_json(ip)
+                ),
+                'mnr': MnrFields.from_json(mnr),
+            }),
+            cls.from_json,
         )
 
-
-def get_records(message: Message):
-    pass
+    @classmethod
+    def from_frame(cls, frame: Ether) -> 'Message':
+        dt = datetime.fromtimestamp(
+            int(frame.time), dateutil.tz.tzutc(),
+        )
+        ts = str(dt)
+        return cls(**pipe(
+            {
+                'ts': ts,
+                'dt': dt,
+                'ether': EtherFields.from_frame(frame),
+                'ip': get_ip_fields(frame),
+                'mnr': MnrFields.from_frame(frame),
+            },
+        ))
 

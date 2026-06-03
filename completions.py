@@ -6,7 +6,7 @@ import typing as T
 import sys
 
 import click
-import nsi
+import nsi.shell
 from nsi.toolz import *
 
 log = nsi.logging.new_log(__name__)

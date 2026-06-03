@@ -23,6 +23,7 @@ def soup(content: str, **kw):
         kw['features'] = 'lxml'
     return bs4.BeautifulSoup(content, **kw)
 
+@curry
 def soup_from_url(url: str, soup_kw: dict = None, **requests_kw):
     try:
         match requests.get(url, **requests_kw):

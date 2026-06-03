@@ -224,7 +224,7 @@ class DnsMessage:
             'host': self.host,
             'port': self.port,
             'id': self.message.id,
-            'raw': self.message.to_wire(),
+            'raw': self.message.to_wire().decode('latin-1'),
             'flags': {
                 'qr': bool(self.message.flags & dns.flags.QR),
                 'opcode': int(self.message.opcode()),

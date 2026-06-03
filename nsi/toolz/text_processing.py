@@ -10,6 +10,7 @@ import pyperclip
 from .common import (
     is_dict, pipe, curry, map, filter, concatv, strip, vmap,
     is_seq, is_str, to_str, merge, compose_left, unique,
+    take, noop,
 )
 
 from .. import logging
@@ -23,6 +24,7 @@ __all__ = [
     'clip_text', 'clip_lines', 'strip_comments_from_lines', 'xlsx_to_clipboard', 
     'xorlines', 'html_list', 'columns_as_code', 'markdown_row', 'code_if', 'join_lines', 
     'table_lines', 'make_table', 'ascii_table', 'html_table', 'download_rows_html',
+    'progressbar',
 ]
 
 log = logging.new_log(__name__)
@@ -59,6 +61,19 @@ def strip_comments(data: Union[str, Iterable], *, char='#'):
         ' type (multiple lines)'
     )
 remove_comments = strip_comments
+
+def progressbar(total: int, perc_increment: int):
+    index, div = 1, 0
+    def counter(log_func: T.Callable[[int], None]):
+        nonlocal index, div
+        perc = 100 * (index / total)
+        ndiv, _ = divmod(perc, perc_increment)
+        if ndiv > div:
+            log_func(int(ndiv * perc_increment))
+            div = ndiv
+        index += 1
+    return counter
+
 
 # ----------------------------------------------------------------------
 #
@@ -244,7 +259,8 @@ def code_if(s: str):
     '''
     return f'`{s}`' if s else ''
 
-def join_lines(sep: str, pre: str = None, post: str = None):
+def join_lines(sep: str, pre: str = None, post: str = None, 
+               top_n: int = None):
     '''
     Decorator that converts generators that yield lines of text into a function
     that returns a string where the lines are prefixed by `pre`, joined by
@@ -255,18 +271,20 @@ def join_lines(sep: str, pre: str = None, post: str = None):
         def joiner(*a, **kw):
             return (pre if pre else '') + pipe(
                 func(*a, **kw),
-                map(str),
+                take(top_n) if top_n else noop,
+                map(to_str),
                 sep.join,
             ) + (post if post else '')
         return joiner
     return wrapper
 
-def table_lines(columns: T.Sequence[str], align: str = None):
+def table_lines(columns: T.Sequence[str], align: str = None,
+                top_n: int = None):
     pre = '| ' + pipe(columns, map(str), ' | '.join) + ' |\n'
     pre += (
         align if align else (('|:--' * len(columns)) + '|')
     ) + '\n'
-    return join_lines('\n', pre=pre, post='\n')
+    return join_lines('\n', pre=pre, post='\n', top_n=top_n)
 
 @curry
 def make_table(columns: T.Sequence[str], 
@@ -471,14 +489,15 @@ function download_rows_csv_{rows_md5}() {{
     document.body.removeChild(element);
 }}
 </script>
-<button class="btn btn-sm btn-primary" type="button" onclick="download_rows_csv_{rows_md5}();">Download Rows</button>
+<button class="btn btn-sm btn-primary" type="button" onclick="download_rows_csv_{rows_md5}();">{button_text}</button>
 '''
 
 @curry
-def download_rows_html(rows, **csv_rows_kwargs):
+def download_rows_html(rows, button_text=None, **csv_rows_kwargs):
     from .csv import csv_rows_to_content
     from .common import to_bytes
     from .hashing import b64encode, b64encode_str, md5
+    button_text = button_text or 'Download Rows'
     rows_gzip_b64 = pipe(
         rows,
         csv_rows_to_content(**csv_rows_kwargs),
@@ -488,4 +507,8 @@ def download_rows_html(rows, **csv_rows_kwargs):
         b64encode_str,
     )
     rows_md5 = md5(rows_gzip_b64)
-    return _download_table_bp.format(rows_gzip_b64=rows_gzip_b64, rows_md5=rows_md5)
+    return _download_table_bp.format(
+        rows_gzip_b64=rows_gzip_b64, 
+        rows_md5=rows_md5,
+        button_text=button_text,
+    )

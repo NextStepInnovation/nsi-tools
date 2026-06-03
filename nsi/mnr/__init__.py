@@ -1,3 +1,3 @@
 from . import (
-    common, netbios,
+    common, netbios, server,
 )

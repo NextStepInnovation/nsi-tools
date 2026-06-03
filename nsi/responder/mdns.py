@@ -19,12 +19,12 @@ class MdnsMessage(DnsMessage):
     def query_to_dict(self, rrset: RRset):
         rdclass = rrset.rdclass
         QU = bool(rdclass & (1 << 15))
-        if not QU:
+        if QU:
             rdclass -= 1 << 15
         return {
             'qu': QU,
             'qm': not QU,
-            'type': rrset.rdtype,
+            'type': int(rrset.rdtype),
             'type_name': rrset.rdtype.name.lower(),
             'class': int(rdclass),
             'class_name': RdataClass(rdclass).name.lower(),

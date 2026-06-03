@@ -10,7 +10,7 @@ class LlmnrMessage(DnsMessage):
     type = 'llmnr'
 
     def query_to_dict(self, rrset: RRset):
-        raise NotImplemented
+        return {}
     
     def rrset_to_dict(self, rrset: RRset):
-        raise NotImplemented
+        return {}

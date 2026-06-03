@@ -1,4 +1,5 @@
 import ssl
+import queue
 import typing as T
 from socketserver import (
     ThreadingTCPServer, ThreadingUDPServer, BaseRequestHandler,
@@ -8,6 +9,7 @@ import struct
 import socket
 from copy import deepcopy
 from ipaddress import ip_address
+import asyncio
 
 import ifcfg
 import dns.message
@@ -44,36 +46,57 @@ Clients
 '''
 
 
-import asyncio
+
+# import zmq
+# from zmq.asyncio import Context
+
+# context = Context.instance()
 
 class DnsPacketHandler:
-    queue: asyncio.Queue
+    # socket: zmq.Socket = None
     def connection_made(self, transport):
         self.transport = transport
         log.info(transport._sock)
+
     def process_message(self, message: dns.message.Message):
         '''
         Because we have no control over packet handler instantiation, need
         polymorphism
         '''
         raise NotImplementedError
+
     def datagram_received(self, data, addr):
         ip, port, *rest = addr
-        log.info(f'IP: {ip} PORT: {port}')
+        log.info(f'IP: {ip} PORT: {port}, *rest: {rest}')
         try:
             try:
                 message = self.process_message(ip, port, dns.message.from_wire(data))
-                self.queue.put(message)
             except dns.exception.FormError as form_exc:
                 log.exception(
                     f'Bad DNS message: {data}'
                 )
-                return
-
+            loop = asyncio.get_event_loop()
+            loop.create_task(
+                self.publish_message(message)
+            )
         except:
             log.exception(
                 f'Error handling: {data}'
             )
+    
+    async def publish_message(self, message):
+
+        try:
+            mdict = message.to_dict()
+            await self.socket.send_string('mnr', flags=zmq.SNDMORE)
+            await self.socket.send_json(mdict)
+            await self.socket.send_string(mdict['type'], flags=zmq.SNDMORE)
+            await self.socket.send_json(mdict)
+        except:
+            log.exception(
+                f'Problem publishing {message}'
+            )
+
     def connection_lost(self, exc):
         """
         Called when the connection is lost or closed.
@@ -106,8 +129,12 @@ async def multicast_server(mnr_type: str, handler, config: DnsConfig):
     )
     return t, p
 
-async def serve_mnr_listeners(queue: asyncio.Queue, config: DnsConfig):
-    DnsPacketHandler.queue = queue
+async def serve_mnr_listeners(config: DnsConfig):
+    socket = context.socket(zmq.PUB)
+    socket.bind('tcp://127.0.0.1:65021')
+
+    DnsPacketHandler.socket = socket
+
     tasks = pipe(
         [
             (multicast_server, ['mdns', MdnsPacketHandler]),
@@ -130,19 +157,19 @@ async def serve_mnr_listeners(queue: asyncio.Queue, config: DnsConfig):
                 f'Closing transport {transport.get_extra_info("sockname")}'
             )
             transport.close()
+            socket.close()
 
-import zmq
-from zmq.asyncio import Context
 
-context = Context.instance()
-
-async def serve_mnr_pub(queue: asyncio.Queue, config: DnsConfig):
-    pub = context.socket(zmq.PUB)
-    pub.connect('tcp://127.0.0.1:65021')
-
+def test_listener():
+    context = zmq.Context()
+    socket = context.socket(zmq.SUB)
+    socket.connect('tcp://127.0.0.1:65021')
+    socket.setsockopt_string(zmq.SUBSCRIBE, 'mnr')
     try:
         while True:
-            message = queue.get()
-
-    except:
-        1
+            log.info('listen')
+            _chan, msg = socket.recv_string(), socket.recv_json()
+            log.info(msg)
+    except KeyboardInterrupt:
+        pass
+    return 

@@ -63,6 +63,7 @@ setup(
         'pymdown-extensions',
         'pyperclip',
         'pyrsistent',
+        'pyshark',
         'python-dateutil',
         'regex',
         'requests',

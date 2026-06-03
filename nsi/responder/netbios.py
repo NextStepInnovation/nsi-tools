@@ -1,9 +1,6 @@
 import typing as T
 import struct
-import pprint
 
-import dns.message
-import dns.exception
 from dns.rrset import RRset
 
 from .. import logging
@@ -109,14 +106,20 @@ def decode_netbios_name(name: bytes) -> str:
 class NbnsMessage(DnsMessage):
     type = 'nbns'
     def query_to_dict(self, rrset: RRset):
-        service, name = decode_netbios_name(rrset.name.to_wire())
-        return {
-            'source': self.source,
-            'type': rrset.rdtype,
-            'type_name': rr_types[rrset.rdtype],
-            'class': int(rrset.rdclass),
-            'class_name': rrset.rdclass.name.lower(),
-            'name': name,
-            'name_wire': rrset.name.to_wire(),
-            'service': service,
-        }
+        raw_name = rrset.name.to_wire()
+        try:
+            service, name = raw_name[0], decode_netbios_name(raw_name[1:])
+            return {
+                'type': int(rrset.rdtype),
+                'type_name': rr_types[rrset.rdtype],
+                'class': int(rrset.rdclass),
+                'class_name': rrset.rdclass.name.lower(),
+                'name': name,
+                'name_wire': rrset.name.to_wire(),
+                'service': service,
+            }
+        except:
+            log.exception(
+                f'Error handling: {raw_name}'
+            )
+            return {}
