@@ -18,7 +18,7 @@ log = logging.new_log(__name__)
 
 @memoize
 def get_md(extensions: T.Sequence[str], extension_configs: T.Dict[str, dict], 
-           base_path: str|Path = '.'):
+           base_path: str|Path = '.') -> _markdown.Markdown:
     return _markdown.Markdown(
         extensions = pipe(
             concatv(

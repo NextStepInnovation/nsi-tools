@@ -48,7 +48,7 @@ class ImageInlineProcessor(LinkInlineProcessor):
 
 
 class CaptionsExtension(Extension):
-    def extendMarkdown(self, md, md_globals):
+    def extendMarkdown(self, md, *a, **kw):
         md.inlinePatterns.register(ImageInlineProcessor(CAPTION_RE, md), 'caption', 151)
 
 

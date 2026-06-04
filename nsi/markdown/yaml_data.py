@@ -112,7 +112,7 @@ class YamlDataPreprocessor(markdown.preprocessors.Preprocessor):
 
 
 class YamlDataExtension(markdown.Extension):
-    def extendMarkdown(self, md, md_globals):
+    def extendMarkdown(self, md, *a, **kw):
         if not hasattr(md, 'meta'):
             md.meta = None
         md.preprocessors.register(
