@@ -88,18 +88,6 @@ def dns_resolve(inpath, bh, outpath, ssh, echo, dns_server, from_clipboard,
             )),
             '\n'.join,
         )
-        max_len = _.pipe(
-            hosts,
-            _.map(lambda h: h['name']),
-            _.maybe_max(key=len),
-            len,
-        )
-        return _.pipe(
-            hosts,
-            _.map(lambda h: (f"{h['name'].rjust(max_len)}:"
-                             f" {h['ip']}")),
-            '\n'.join,
-        )
 
     def csv_format(hosts):
         return _.csv_rows_to_content(
