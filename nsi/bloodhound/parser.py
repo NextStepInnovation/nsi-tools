@@ -13,17 +13,18 @@ from .. import logging
 
 log = logging.new_log(__name__)
 info = do_info(log)
+debug = do_debug(log)
 
 @ensure_paths
 def parse_json(path: Path):
-    log.info(
+    log.debug(
         f'Loading JSON from: {path} size: {path.stat().st_size}'
     )
     return pipe(
         path,
         slurp,
         json_loads,
-        info(
+        debug(
             '  .. done.'
         )
     )
@@ -68,7 +69,7 @@ get_description = get_property('description', default='')
 
 
 def bloodhound_data(data: dict):
-    log.info(
+    log.debug(
         'Creating bloodhound data...'
     )
     for key, objects in data.items():
@@ -93,7 +94,7 @@ def bloodhound_data(data: dict):
             map(lambda o: (get_name(o), o)),
             dict,
         )},
-    ), do(lambda _: log.info('  .. done.')))
+    ), do(lambda _: log.debug('  .. done.')))
 
 def bloodhound_data_from_paths(paths: T.List[Path]):
     def get_data(d, type):
@@ -248,9 +249,6 @@ computer_search = object_search('computers')
 @ensure_paths
 def object_members(obj_type: str, path: Path, obj_re: str, *, 
                    max_level: int=30):
-    log.info(
-        (obj_type, path, obj_re, max_level)
-    )
     return pipe(
         object_search(obj_type, path, obj_re),
         valmap(lambda node: get_members(
