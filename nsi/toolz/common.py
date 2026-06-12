@@ -72,7 +72,7 @@ __all__ = [
     # common
     'as_tuple', 'as_dict', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 
     'cconcatv', 'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 
-    'do_error', 'do_info', 'do_log', 'do_slice', 'error_raise', 'endswith',
+    'do_error', 'do_info', 'do_debug', 'do_log', 'do_slice', 'error_raise', 'endswith',
     'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'get_t', 'help_text',
     'index', 'is_dict', 'is_float', 'is_indexable', 'is_int', 'is_numeric',
@@ -909,6 +909,8 @@ def vdo(func, value):
 
 @curry
 def do_log(logger, msg: Union[str, Callable], value: Any, **kw):
+    '''
+    '''
     if callable(msg):
         msg = msg(value)
     logger(msg, **kw)
@@ -918,6 +920,9 @@ do_info = compose_left(
 )
 do_error = compose_left(
     lambda logger: do_log(logger.error)
+)
+do_debug = compose_left(
+    lambda logger: do_log(logger.debug)
 )
 
 @curry
