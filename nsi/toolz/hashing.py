@@ -6,7 +6,7 @@ from collections.abc import Callable as Function
 import json
 from typing import Union, Callable, Any
 
-from multipledispatch import dispatch
+from Crypto.Hash import MD4
 
 from .common import (
     curry, is_str, pipe, to_bytes, to_str, compose_left, call,
@@ -63,11 +63,9 @@ def hash_content(hasher: Callable):
     return do_hash
 
 def nt(content: str):
-    return pipe(
-        hashlib.new(
-            'md4', content.encode('utf-16le')
-        ).hexdigest(),
-    )
+    md4 = MD4.new()
+    md4.update(content.encode('utf-16le'))
+    return md4.hexdigest()
 
 md5 = hash_content(hashlib.md5)
 sha1 = hash_content(hashlib.sha1)
