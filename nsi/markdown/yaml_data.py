@@ -121,3 +121,4 @@ class YamlDataExtension(markdown.Extension):
 
 def makeExtension(*args, **kwargs):
     return YamlDataExtension(*args, **kwargs)
+
