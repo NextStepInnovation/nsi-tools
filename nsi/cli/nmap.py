@@ -381,10 +381,11 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
         )
         log.info(col_formats)
         def visual_row(row):
-            return [
+            row = [
                 f.format(v) for f, v in zip(col_formats, row) # type: ignore
             ]
-
+            row[-1] = row[-1].strip()
+            return row
         return pipe(
             rows,
             map(visual_row),
