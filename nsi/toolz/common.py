@@ -605,7 +605,7 @@ def startswith(prefix: Union[str, bytes], string: Union[str, bytes]):
 
 @curry
 def endswith(prefix: Union[str, bytes], string: Union[str, bytes]):
-    return string.startswith(prefix)
+    return string.endswith(prefix)
 
 def do_slice(start: int, stop: int = None, step: int = None):
     def slicer(value: str):
