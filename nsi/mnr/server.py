@@ -16,6 +16,12 @@ from .common import Message
 log = new_log(__name__)
 context = zmq.Context()
 
+display_type = lambda m: {
+    'mdns': 'mDNS',
+    'nbns': 'NetBIOS NS',
+    'llmnr': 'LLMNR',
+}.get(m.mnr.type)
+
 @curry
 def handle_frame(socket: zmq.Socket, frame: Ether):
     message = Message.from_frame(frame)
@@ -27,7 +33,7 @@ def handle_frame(socket: zmq.Socket, frame: Ether):
         log.exception(pformat(json_dict))
         return
     socket.send_json(json_dict)
-    log.debug(f'Message sent: {message.mnr.type}')
+    log.debug(f'Message sent: {display_type(message)}')
 
 def serve_mnr_listener():
     pub_socket = context.socket(zmq.PUB)
