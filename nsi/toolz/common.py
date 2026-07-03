@@ -25,7 +25,7 @@ import chardet
 maybe = _maybe
 
 try:
-    from cytoolz.curried import *
+    from cytoolz.curried import *             # type: ignore
 except ImportError:
     from toolz.curried import (
         accumulate, apply, assoc, assoc_in, comp,
@@ -43,7 +43,6 @@ except ImportError:
         sliding_window, sorted, tail, take, take_nth,
         thread_first, thread_last, topk, unique, update_in,
         valfilter, valmap,
-
     )
 
 from ..logging import new_log

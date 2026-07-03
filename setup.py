@@ -2,7 +2,7 @@ import re
 import json
 from pathlib import Path
 
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages # type: ignore
 
 HERE = Path(__file__).resolve().parent
 
