@@ -27,7 +27,7 @@ def handle_frame(socket: zmq.Socket, frame: Ether):
         log.exception(pformat(json_dict))
         return
     socket.send_json(json_dict)
-    log.debug('Message sent')
+    log.debug(f'Message sent: {message.mnr.type}')
 
 def serve_mnr_listener():
     pub_socket = context.socket(zmq.PUB)
