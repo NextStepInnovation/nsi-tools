@@ -23,7 +23,7 @@ from .. import logging
 from ..toolz import (
     pipe, vmap, map, filter, memoize, curry, to_bytes, is_str, merge,
     ensure_paths, dissoc, valfilter, to_str, split, do, is_seq, is_dict,
-    to_dt,
+    to_dt, concatv,
 )
 from ..types import Ip, IpList
 
@@ -98,7 +98,7 @@ def lstrings(data: bytes, encoding: str = 'utf-8') -> T.Iterable[str]:
     while data:
         size, data = data[0], data[1:]
         datum = data[:size]
-        yield datum.decode(encoding=encoding)
+        yield decode_bytes(datum, encoding=encoding)
         data = data[size:]
 
 def field_names(cls):
@@ -118,17 +118,6 @@ class MnrData:
 
     def to_json(self):
         return asdict(self)
-        # if is_seq(data):
-        #     return pipe([
-        #         v.prepare_data(v) for v in data
-        #     ], filter(lambda v: v is not None), tuple)
-        # elif is_dict(data):
-        #     return pipe({
-        #         k: v.prepare_data(v) for k, v in data.items()
-        #     }, valfilter(lambda v: v is not None))
-        # elif isinstance(data, bytes):
-        #     return data.decode('latin-1')
-        # return data
 
 @dataclass
 class EtherFields(MnrData):
@@ -200,6 +189,40 @@ MDNS_RECORDS = (DNSQR,  DNSRR, DNSRRSRV, DNSRRNSEC)
 NBNS_RECORDS = (NBNSQueryRequest, NBNSQueryResponse)
 LLMNR_RECORDS = (LLMNRQuery, LLMNRResponse)
 
+def decode_bytes(v: bytes, encoding: str = 'utf-8'):
+    try:
+        return v.decode(encoding)
+    except UnicodeDecodeError:
+        try:
+            return v.decode('utf-16le')
+        except UnicodeDecodeError:
+            try:
+                return v.decode('latin-1')
+            except:
+                log.error(f'{repr(v)}')
+                raise
+        except:
+            log.error(f'{repr(v)}')
+            raise
+    except:
+        log.error(f'{repr(v)}')
+        raise
+
+def decode_netbios_name(name: str|bytes) -> T.Tuple[str, str]:
+    """Return the NetBIOS first-level decoded nbname."""
+    try:
+        name = to_bytes(name)
+        decoded = bytes(
+            [((name[i] - 0x41) << 4) |
+            ((name[i+1] - 0x41) & 0xf) for i in range(0, 32, 2)]
+        )
+        service = nbns_suffixes[decoded[-1]]
+
+        return f'{service} ({hex(decoded[-1])})', decoded[:-1]
+    except:
+        log.error(f'Problem parsing NBNS name: {name}')
+        return '', ''
+
 @dataclass
 class MnrRecord(MnrData):
     name: str
@@ -223,59 +246,79 @@ class MnrRecord(MnrData):
     qtype: int
     unicastresponse: int
     qclass: int
+    nbns_service: str
 
     @classmethod
     def record_fields(cls, record: (DNSQR | DNSRR | DNSRRSRV | DNSRRNSEC | 
                                     NBNSQueryRequest | NBNSQueryResponse | 
-                                    LLMNRQuery | LLMNRResponse)):
-        fields = record.fields
-        if isinstance(record, (NBNSQueryRequest, )):
-            fields = merge(fields, {
-                'qname': fields['QUESTION_NAME'],
-                'qclass': fields['QUESTION_CLASS'],
-                'qtype': 1,
-            })
-        for k, v in fields.items():
-            if isinstance(v, bytes):
-                fields[k] = v.decode()
-        if 'rdata' in fields:
-            if is_seq(fields['rdata']):
-                rdata_strings = pipe(
-                    fields['rdata'],
-                    map(lambda b: b.decode() if isinstance(b, bytes) else b),
-                    list,
-                )
-                fields['rdata'] = rdata_strings
-                rdata_dict_str = pipe(
-                    rdata_strings, 
-                    filter(lambda s: '=' in s), 
-                    tuple,
-                )
-                if rdata_dict_str:
-                    fields = merge(fields, {
-                        'rdata_dict': pipe(
-                            rdata_dict_str,
-                            map(split('=', maxsplit=1)),
-                            dict,
-                        ),
-                    })
-            else:
-                rd = fields['rdata']
-                fields['rdata'] = rd.decode() if isinstance(rd, bytes) else rd
+                                    LLMNRQuery | LLMNRResponse | 
+                                    dpkt.netbios.NS.Q | dpkt.netbios.NS.RR)):
+        if isinstance(record, (dpkt.netbios.NS.Q, dpkt.netbios.NS.RR)):
+            service, name = decode_netbios_name(record.name)
+            fields = pipe(
+                field_names(cls),
+                filter(lambda n: hasattr(record, n)),
+                map(lambda n: (n, getattr(record, n))),
+                dict,
+                lambda f: merge(f, {
+                    'name': name,
+                    'nbns_service': service,
+                })
+            )
+        else:
+            fields = record.fields
+            if isinstance(record, (NBNSQueryRequest, )):
+                fields = merge(fields, {
+                    'qname': fields['QUESTION_NAME'],
+                    'qclass': fields['QUESTION_CLASS'],
+                    'qtype': 1,
+                })
+            for k, v in fields.items():
+                if isinstance(v, bytes):
+                    try:
+                        fields[k] = decode_bytes(v)
+                    except:
+                        log.error(f'{k} {repr(v)}')
+                        raise
+            if 'rdata' in fields:
+                if is_seq(fields['rdata']):
+                    rdata_strings = pipe(
+                        fields['rdata'],
+                        map(lambda b: decode_bytes(b) if isinstance(b, bytes) else b),
+                        list,
+                    )
+                    fields['rdata'] = rdata_strings
+                    rdata_dict_str = pipe(
+                        rdata_strings, 
+                        filter(lambda s: '=' in s), 
+                        tuple,
+                    )
+                    if rdata_dict_str:
+                        fields = merge(fields, {
+                            'rdata_dict': pipe(
+                                rdata_dict_str,
+                                map(split('=', maxsplit=1)),
+                                dict,
+                            ),
+                        })
+                else:
+                    rd = fields['rdata']
+                    fields['rdata'] = decode_bytes(rd) if isinstance(rd, bytes) else rd
         return fields
 
     @classmethod
     def from_record(cls: 'MnrRecord', 
                     record: (DNSQR | DNSRR | DNSRRSRV | DNSRRNSEC | 
                              NBNSQueryRequest | NBNSQueryResponse | 
-                             LLMNRQuery | LLMNRResponse)):
+                             LLMNRQuery | LLMNRResponse | 
+                             dpkt.netbios.NS)):
         fields = cls.record_fields(record)
         type_key = lambda d: (d.get('type') or d.get('qtype'))
         def get_name(d):
             name = (d.get('rrname') or d.get('qname'))
             if name is not None:
                 if isinstance(name, bytes):
-                    return name.decode()
+                    return decode_bytes(name)
             return name
         return cls(**pipe(
             field_names(cls),
@@ -343,16 +386,6 @@ nbns_suffixes = {
     0xFF: "MS-DOS Network Client"
 }
 
-def decode_netbios_name(name: str|bytes) -> str:
-    """Return the NetBIOS first-level decoded nbname."""
-    name = to_bytes(name)
-    decoded = bytes(
-        [((name[i] - 0x41) << 4) |
-         ((name[i+1] - 0x41) & 0xf) for i in range(0, 32, 2)]
-    )
-    service = nbns_suffixes[decoded[-1]]
-
-    return f'{service} ({hex(decoded[-1])})', decoded[:-1]
 
 @dataclass
 class MnrFields(MnrData):
@@ -409,6 +442,14 @@ class MnrFields(MnrData):
                 })
             if Raw in nbns:
                 ns = dpkt.netbios.NS(nbns.original)
+                fields = pipe(
+                    concatv([
+                        'qd', 'ar', 'an', 'ns',
+                    ], field_names(cls)),
+                    filter(lambda n: hasattr(ns, n)),
+                    map(lambda n: (n, getattr(ns, n))),
+                    dict,
+                )
         else:
             if DNS in frame:
                 fields = frame[DNS].fields
@@ -422,18 +463,22 @@ class MnrFields(MnrData):
                 'Cannot create object'
             )
             return
-        return cls(**pipe(
-            field_names(cls),
-            map(lambda f: (f, fields.get(f))),
-            dict,
-            lambda d: merge(d, {
-                'type': get_mnr_type(frame),
-                'questions': [MnrRecord.from_record(r) for r in fields.get('qd', [])],
-                'answers': [MnrRecord.from_record(r) for r in fields.get('an', [])],
-                'nameserver': [MnrRecord.from_record(r) for r in fields.get('ns', [])],
-                'additional': [MnrRecord.from_record(r) for r in fields.get('ar', [])],
-            }),
-        ))
+        try:
+            return cls(**pipe(
+                field_names(cls),
+                map(lambda f: (f, fields.get(f))),
+                dict,
+                lambda d: merge(d, {
+                    'type': get_mnr_type(frame),
+                    'questions': [MnrRecord.from_record(r) for r in fields.get('qd', [])],
+                    'answers': [MnrRecord.from_record(r) for r in fields.get('an', [])],
+                    'nameserver': [MnrRecord.from_record(r) for r in fields.get('ns', [])],
+                    'additional': [MnrRecord.from_record(r) for r in fields.get('ar', [])],
+                }),
+            ))
+        except:
+            log.error(frame)
+            raise
 
 def get_ip_fields(frame: Ether):
     if IP in frame:
@@ -466,7 +511,7 @@ class Message(MnrData):
         ip = message.get('ip', {})
         mnr = message.get('mnr', {})
         ts = message.get('ts')
-        return pipe(
+        return cls(**pipe(
             field_names(cls),
             map(lambda f: (f, message.get(f))),
             dict,
@@ -480,8 +525,7 @@ class Message(MnrData):
                 ),
                 'mnr': MnrFields.from_json(mnr),
             }),
-            cls.from_json,
-        )
+        ))
 
     @classmethod
     def from_frame(cls, frame: Ether) -> 'Message':

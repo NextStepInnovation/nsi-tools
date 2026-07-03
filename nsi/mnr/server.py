@@ -20,13 +20,14 @@ context = zmq.Context()
 def handle_frame(socket: zmq.Socket, frame: Ether):
     message = Message.from_frame(frame)
     json_dict = message.to_json()
-    log.debug('Message sent')
     socket.send_string(f'mnr-{message.mnr.type}', flags=zmq.SNDMORE)
     try:
         json.dumps(json_dict)
     except:
         log.exception(pformat(json_dict))
+        return
     socket.send_json(json_dict)
+    log.debug('Message sent')
 
 def serve_mnr_listener():
     pub_socket = context.socket(zmq.PUB)
@@ -37,15 +38,25 @@ def serve_mnr_listener():
         store=False,
     )
 
-def serve_mnr_responder(prefix: str|bytes = b'mnr') -> T.Generator[Message]:
-    with context.socket(zmq.SUB) as sub_socket:
-        sub_socket.connect(
-            'tcp://localhost:42042'
-        )
-        sub_socket.setsockopt(zmq.SUBSCRIBE, to_bytes(prefix))
-        while True:
-            mnr_type, mnr_data = sub_socket.recv_string(), sub_socket.recv_json()
-            yield pipe(
-                mnr_data,
-                Message.from_json,
+def _mnr_generator(prefix: str|bytes) -> T.Generator[Message]:
+    def generator():
+        with context.socket(zmq.SUB) as sub_socket:
+            sub_socket.connect(
+                'tcp://localhost:42042'
             )
+            sub_socket.setsockopt(zmq.SUBSCRIBE, to_bytes(prefix))
+            while True:
+                mnr_type, mnr_data = sub_socket.recv_string(), sub_socket.recv_json()
+                try:
+                    yield pipe(
+                        mnr_data,
+                        Message.from_json,
+                    )
+                except:
+                    log.error(f'Could not parse MNR data: {pformat(mnr_data)}')
+    return generator
+
+all_mnr_generator = _mnr_generator('mnr')
+llmnr_generator = _mnr_generator('mnr-llmnr')
+mdns_generator = _mnr_generator('mnr-mdns')
+netbios_generator = _mnr_generator('mnr-nbns')
