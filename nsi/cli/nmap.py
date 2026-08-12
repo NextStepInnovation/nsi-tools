@@ -324,9 +324,11 @@ def nmap_services(paths, no_ports, no_names, must_have_service, loglevel,
                         'iptup': _.ip_tuple(host['ip']),
                         'name': host['name'],
                         'port': p['port'],
+                        'state': p['state'],
                         'guess': p['guess'],
                         'service': p['service'],
                     } for p in host['ports']]),
+                    filter(lambda s: s['state'] == 'open'),
                     tuple,
                 )
             case unhandled:
