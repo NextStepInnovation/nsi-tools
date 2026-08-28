@@ -15,7 +15,7 @@ from toolz.functoolz import compose_left, compose
 
 from .common import (
     pipe, call, concatv, vmapcat, curry, map, filter, vfilter, do,
-    new_log, splitlines, merge, memoize, deref, is_seq, vmap, vcall,
+    new_log, splitlines, merge, memoize, deref, is_seq, vmap, vcall, noop,
 )
 
 TV = T.TypeVar('TV')
@@ -31,7 +31,7 @@ __all__ = [
     'slurp', 'slurpb', 'slurpblines', 'slurplines', 'slurpbchunks',
     'to_paths', 'walk', 'walkmap', 'convert_utf8', 'writeline', 
     'stat', 'mstat', 'ctime', 'mtime', 'atime', 'file_size',
-    'mkdir', 'mkdirp',
+    'mkdir', 'mkdirp', 'file_cache',
 ]
 
 # ----------------------------------------------------------------------
@@ -67,6 +67,7 @@ POS_PARAM_KINDS = {
     inspect.Parameter.POSITIONAL_OR_KEYWORD,
     inspect.Parameter.VAR_POSITIONAL,
 }
+
 @curry
 def ensure_paths(func, *, expanduser: bool=True, resolve: bool=False):
     '''Ensure that all path-like arguments of this function are converted into
@@ -135,6 +136,65 @@ ensure_paths_curry = compose(
 @ensure_paths_curry
 def glob(glob_expr: str, path: Path):
     return path.glob(glob_expr)
+
+class FileMemo(T.TypedDict):
+    dt: datetime
+    value: T.Any
+
+_file_caches: T.Dict[Path, FileMemo] = {}
+def file_cache_memo(path: str | Path):
+    path = Path(path).expanduser().resolve()
+    return _file_caches.setdefault(path, {'dt': datetime(2,1,1), 
+                                          'value': None})
+def get_params(func: T.Callable) -> T.Dict[str, T.Tuple[int, inspect.Parameter]]:
+    return {
+        name: (i, param)
+        for i, (name, param)
+        in enumerate(inspect.signature(func).parameters.items())
+    }
+
+def file_cache(path: str | Path | T.Callable):
+    if callable(path):
+        path_func = path
+        path_params = get_params(path_func)
+
+        def decorator(func):
+            func_params = get_params(func)
+            shared = set(func_params) & set(path_params)
+            sig = inspect.signature(func)
+            functools.wraps(func)
+            def wrapper(*a, **kw):
+                bound = sig.bind(*a, **kw)
+                bound.apply_defaults()
+                args = {
+                    k: bound.arguments[k]
+                    for k in shared
+                }
+                path = path_func(**args)
+                memo = file_cache_memo(path)
+                if memo:
+                    if memo['dt'].timestamp() > path.stat().st_mtime:
+                        return memo['value']
+                memo['value'] = func(*a, **kw)
+                memo['dt'] = datetime.now()
+                return memo['value']
+            return wrapper
+        return decorator
+    else:
+        path = Path(path).expanduser().resolve()
+
+        def decorator(func):
+            functools.wraps(func)
+            def wrapper(*a, **kw):
+                memo = file_cache_memo(path)
+                if memo:
+                    if memo['dt'].timestamp() > path.stat().st_mtime:
+                        return memo['value']
+                memo['value'] = func(*a, **kw)
+                memo['dt'] = datetime.now()
+                return memo['value']
+            return wrapper
+        return decorator
 
 @ensure_paths
 def walk(path: Path, resolve: bool = True, skip_dirs: T.Optional[T.Sequence[str]] = None):

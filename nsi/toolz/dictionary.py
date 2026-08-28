@@ -6,7 +6,7 @@ from typing import (
 
 from .common import (
     pipe, merge, curry, assoc, assoc_in, dissoc, vmap, get,
-    to_bytes, is_seq, is_dict, map, filter,
+    to_bytes, is_seq, is_dict, map, filter, noop, concat,
 )
 from .json import json_dumpb
 from .pyrsistent import no_pyrsistent
@@ -47,20 +47,29 @@ dict_sha1 = dict_hash(hashlib.sha1)
 dict_sha256 = dict_hash(hashlib.sha256)
 
 
-def cmerge(*dicts):
+def cmerge(*dicts, prior: bool=False):
     '''Curried dictionary merge
+
+    If prior is True, then the provided dicts will override whatever is passed
+    to it.
 
     Examples:
 
-    >>> merged = pipe({'a': 1}, cmerge({'b': 2}, {'c': 3}))
+    >>> merged = pipe({'a': 1}, cmerge({'a': 5}, {'b': 2}, {'c': 3}))
     >>> merged == {'a': 1, 'b': 2, 'c': 3}
     True
-
+    >>> merged = pipe({'a': 1}, cmerge({'a': 2}, {'c': 3}, prior=True))
+    >>> merged == {'a': 2, 'c': 3}
+    True
     '''
     def do_merge(*more_dicts):
         '''More dots. More dots. No more dots.
         '''
-        return merge(*(dicts + more_dicts))
+        return merge(*pipe(
+            [dicts, more_dicts],
+            reversed if prior else noop,
+            concat,
+        ))
     return do_merge
 
 @curry

@@ -11,7 +11,7 @@ from .common import pipe, curry
 
 __all__ = [
     # time
-    'maybe_dt', 'parse_dt', 'to_dt', 'date_to_datetime',
+    'maybe_dt', 'parse_dt', 'to_dt', 'date_to_datetime', 'to_local',
 ]
 
 # ----------------------------------------------------------------------
@@ -46,6 +46,9 @@ def parse_dt(ts: str, local=False):
     if local:
         return dt.astimezone(dateutil.tz.tzlocal())
     return dt
+
+def to_local(dt: datetime):
+    return dt.astimezone(dateutil.tz.tzlocal())
 
 @curry
 def to_dt(value, default=datetime.fromtimestamp(0), local: bool=False, **du_kw):

@@ -70,7 +70,7 @@ __all__ = [
 
     # common
     'as_tuple', 'as_dict', 'call', 'callif', 'cat_to_set', 'concat_t', 'cconcat', 
-    'cconcatv', 'concatv_t', 'contains', 'cprint', 'deref', 'dispatch', 
+    'cconcatv', 'concatv_t', 'contains', 'cprint', 'deref', 'ref', 'mref', 'dispatch', 
     'do_error', 'do_info', 'do_debug', 'do_log', 'do_slice', 'error_raise', 'endswith',
     'filter_t', 'find', 'first_true',
     'flatdict', 'float_or_zero', 'get_t', 'help_text',
@@ -222,19 +222,44 @@ def val(value):
 
 
 @curry
-def deref(attr, obj):
+def ref(attr, obj):
     '''Curried getattr for accessing attributes of an object.
 
     Examples:
 
     >>> class X:
+    ...     def __init__(self, x, y=None, z=None):
+    ...         self.x = x
+    ...         self.y = y
+    ...         self.z = z
+    ...
+    >>> pipe(X(1), ref('x'))
+    1
+    >>> pipe(X(1, 2, 3), ref(['x', 'y', 'z']), tuple)
+    (1, 2, 3)
+    '''
+    if is_seq(attr):
+        return [getattr(obj, a) for a in attr]
+    return getattr(obj, attr)
+deref = ref
+
+@curry
+def mref(attr, iterable):
+    '''Mapped deref
+
+    Examples:
+    >>> class X:
     ...     def __init__(self, x):
     ...         self.x = x
     ...
-    >>> pipe([X(1), X(5)], map(deref('x')), tuple)
+    >>> pipe([X(1), X(5)], mref('x'), tuple)
     (1, 5)
     '''
-    return getattr(obj, attr)
+    return pipe(
+        iterable,
+        map(deref(attr)),
+    )
+
 
 def call(method_name, *a, **kw):
     '''"Curried" method caller
@@ -249,14 +274,41 @@ def call(method_name, *a, **kw):
     ...     def mult(self, v):
     ...         return self.x * v
     ...
-    >>> pipe([X(1), X(5)], map(call('square')), tuple)
-    (1, 25)
+    >>> pipe(X(5), call('square'))
+    25
     >>> pipe([X(1), X(5)], map(call('mult', 3)), tuple)
     (3, 15)
     '''
     def caller(obj):
         return getattr(obj, method_name)(*a, **kw)
     return caller
+
+@curry
+def mcall(method_name, *a, **kw):
+    '''Mapped method caller
+
+    Examples:
+
+    >>> class X:
+    ...     def __init__(self, x):
+    ...         self.x = x
+    ...     def square(self):
+    ...         return self.x ** 2
+    ...     def mult(self, v):
+    ...         return self.x * v
+    ...
+    >>> pipe([X(1), X(5)], mcall('square'), tuple)
+    (1, 25)
+    >>> pipe([X(1), X(5)], mcall('mult', 3), tuple)
+    (3, 15)
+    '''
+    def iterator(iterable):
+        return pipe(
+            iterable,
+            map(call(method_name, *a, **kw)),
+        )
+    return iterator
+    
 
 @curry
 def contains(value, obj):
