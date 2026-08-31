@@ -170,9 +170,9 @@ def file_cache(path: str | Path | T.Callable):
                     k: bound.arguments[k]
                     for k in shared
                 }
-                path = path_func(**args)
+                path: Path = path_func(**args)
                 memo = file_cache_memo(path)
-                if memo:
+                if path.exists() and memo:
                     if memo['dt'].timestamp() > path.stat().st_mtime:
                         return memo['value']
                 memo['value'] = func(*a, **kw)

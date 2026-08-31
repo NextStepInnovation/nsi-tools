@@ -26,11 +26,11 @@ def random_str(width=8, *, rng=random, population: Sequence = string.ascii_lette
             f'Could not find a suitable random word with population: {population}'
             f' and exclude_words: {exclude_words}'
         )
-    clean_pop = pipe(set(population) - set(exclude_chars), tuple)
+    clean_pop = pipe(set(population) - set(exclude_chars), sorted, tuple)
     r_str = ''.join(rng.choice(clean_pop) for _ in range(width))
     if exclude_words and (r_str in exclude_words):
         return random_str(
-            n, rng=rng, population=population,
+            width, rng=rng, population=population,
             exclude_chars=exclude_chars, exclude_words=exclude_words,
             try_index = try_index + 1, max_tries=max_tries,
         )
