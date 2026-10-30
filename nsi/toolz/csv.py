@@ -76,6 +76,9 @@ def csv_rows_from_fp(rfp, *, header=True, columns=None, **reader_kw):
     '''Load CSV rows from file-like object
 
     '''
+    utf_magic = rfp.read(1)
+    if utf_magic != '\ufeff':
+        rfp.seek(0)
     if header:
         column_row = next(csv.reader(rfp))
         columns = columns or column_row
